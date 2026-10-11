@@ -1,0 +1,39 @@
+@import "tailwindcss";
+
+@theme {
+  --color-turf-50: #f0fdf5;
+  --color-turf-100: #dcfce9;
+  --color-turf-200: #bbf7d2;
+  --color-turf-300: #86efb0;
+  --color-turf-400: #4ade88;
+  --color-turf-500: #22c568;
+  --color-turf-600: #16a352;
+  --color-turf-700: #128043;
+  --color-turf-800: #146538;
+  --color-turf-900: #13532f;
+  --color-turf-950: #052e16;
+}
+
+:root {
+  --background: #f6f8f7;
+  --foreground: #0f172a;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  overflow-x: hidden;
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-turf-600);
+  outline-offset: 2px;
+}
