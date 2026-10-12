@@ -310,3 +310,122 @@ describe("PATCH /api/admin/turfs/:id - payment & contact fields", () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe("POST /api/admin/turfs - home page display fields", () => {
+  it("defaults isVerified to false and turfCount to 1 when omitted", async () => {
+    const tables = buildTables();
+    const res = await handleTurfsPost(
+      postRequest({
+        name: "New Turf",
+        location: "Test Location",
+        sportType: "Cricket",
+        openingTime: "06:00",
+        closingTime: "22:00",
+        slotIntervalMinutes: 30,
+      }),
+      makeAdminDeps(tables, "admin")
+    );
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.turf.is_verified).toBe(false);
+    expect(body.turf.turf_count).toBe(1);
+    expect(body.turf.max_persons).toBeNull();
+    expect(body.turf.amenities).toEqual([]);
+  });
+
+  it("saves isVerified, maxPersons, turfCount, and amenities", async () => {
+    const tables = buildTables();
+    const res = await handleTurfsPost(
+      postRequest({
+        name: "New Turf",
+        location: "Test Location",
+        sportType: "Cricket",
+        openingTime: "06:00",
+        closingTime: "22:00",
+        slotIntervalMinutes: 30,
+        isVerified: true,
+        maxPersons: 25,
+        turfCount: 2,
+        amenities: ["parking", "wifi"],
+      }),
+      makeAdminDeps(tables, "admin")
+    );
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.turf.is_verified).toBe(true);
+    expect(body.turf.max_persons).toBe(25);
+    expect(body.turf.turf_count).toBe(2);
+    expect(body.turf.amenities).toEqual(["parking", "wifi"]);
+  });
+
+  it("rejects an amenity value outside the known set", async () => {
+    const tables = buildTables();
+    const res = await handleTurfsPost(
+      postRequest({
+        name: "New Turf",
+        location: "Test Location",
+        sportType: "Cricket",
+        openingTime: "06:00",
+        closingTime: "22:00",
+        slotIntervalMinutes: 30,
+        amenities: ["sauna"],
+      }),
+      makeAdminDeps(tables, "admin")
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects a non-positive maxPersons", async () => {
+    const tables = buildTables();
+    const res = await handleTurfsPost(
+      postRequest({
+        name: "New Turf",
+        location: "Test Location",
+        sportType: "Cricket",
+        openingTime: "06:00",
+        closingTime: "22:00",
+        slotIntervalMinutes: 30,
+        maxPersons: 0,
+      }),
+      makeAdminDeps(tables, "admin")
+    );
+    expect(res.status).toBe(400);
+  });
+});
+
+describe("PATCH /api/admin/turfs/:id - home page display fields", () => {
+  it("edits display fields without touching untouched ones", async () => {
+    const tables = buildTables();
+    tables.turfs![0]!.is_verified = false;
+    tables.turfs![0]!.max_persons = null;
+    tables.turfs![0]!.turf_count = 1;
+    tables.turfs![0]!.amenities = ["parking"];
+
+    const res = await handleTurfPatch(
+      new Request("http://localhost", { method: "PATCH", body: JSON.stringify({ isVerified: true, maxPersons: 30 }) }),
+      TURF_ID,
+      makeAdminDeps(tables, "admin")
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.turf.is_verified).toBe(true);
+    expect(body.turf.max_persons).toBe(30);
+    // Untouched fields preserved.
+    expect(body.turf.turf_count).toBe(1);
+    expect(body.turf.amenities).toEqual(["parking"]);
+  });
+
+  it("allows replacing the amenities list entirely", async () => {
+    const tables = buildTables();
+    tables.turfs![0]!.amenities = ["parking", "wifi"];
+
+    const res = await handleTurfPatch(
+      new Request("http://localhost", { method: "PATCH", body: JSON.stringify({ amenities: ["restroom"] }) }),
+      TURF_ID,
+      makeAdminDeps(tables, "admin")
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.turf.amenities).toEqual(["restroom"]);
+  });
+});

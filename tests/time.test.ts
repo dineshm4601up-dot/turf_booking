@@ -6,8 +6,25 @@ import {
   formatTime12Hour,
   getBookingEndTime,
   getDayOfWeek,
+  getOperatingHoursLabel,
   timeToMinutes,
 } from "../src/lib/time";
+
+describe("getOperatingHoursLabel", () => {
+  it("computes a normal same-day span", () => {
+    expect(getOperatingHoursLabel("06:00", "23:00")).toBe("17 hours");
+    expect(getOperatingHoursLabel("09:00", "18:00")).toBe("9 hours");
+  });
+
+  it("reports 24 hours (not 0) when opening and closing time are equal", () => {
+    expect(getOperatingHoursLabel("06:00", "06:00")).toBe("24 hours");
+    expect(getOperatingHoursLabel("00:00", "00:00")).toBe("24 hours");
+  });
+
+  it("formats a fractional span with one decimal place", () => {
+    expect(getOperatingHoursLabel("06:00", "18:30")).toBe("12.5 hours");
+  });
+});
 
 describe("time utilities", () => {
   it("5:00 PM + 2.5 hours = 7:30 PM", () => {

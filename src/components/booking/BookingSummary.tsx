@@ -1,8 +1,8 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { AlertCircle, CheckCircle2, Info, Loader2, MessageCircle, Phone, User } from "lucide-react";
+import { AlertCircle, CheckCircle2, Info, Loader2, Lock, MessageCircle, Phone, User } from "lucide-react";
 import { CURRENCY_SYMBOL } from "@/config/turf";
 import { getPaymentMethodLabel, getPaymentStatusLabel, type PaymentMethod, type PaymentStatus } from "@/config/payment";
 import { formatDateLong, formatDurationLabel, formatTime12Hour } from "@/lib/time";
@@ -26,9 +26,9 @@ interface BookingSummaryProps {
 }
 
 interface ConfirmedBooking {
-  reference: string;
   turfName: string;
   turfWhatsappNumber: string;
+  customerName: string;
   bookingDate: string;
   startTime: string;
   endTime: string;
@@ -39,6 +39,8 @@ interface ConfirmedBooking {
   paymentStatus: PaymentStatus;
   upi: UpiPanelData | null;
 }
+
+type NameLookupState = "idle" | "loading" | "found" | "not_found" | "error";
 
 function generateIdempotencyKey(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -64,7 +66,74 @@ export function BookingSummary({
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState<ConfirmedBooking | null>(null);
+  const [nameLookupState, setNameLookupState] = useState<NameLookupState>("idle");
+  const [nameLocked, setNameLocked] = useState(false);
   const idempotencyKeyRef = useRef(generateIdempotencyKey());
+
+  const phoneLookupResult = validateCustomerPhone(customer.phone);
+  const normalizedPhone = phoneLookupResult.ok ? phoneLookupResult.value : null;
+
+  // Looks up the Customer Master once the phone field holds a complete,
+  // valid 10-digit number: an existing customer's saved name is fetched
+  // and the name field is locked (read-only) so a returning customer can't
+  // accidentally -- or the browser can't be made to -- submit a different
+  // name for a number that already has one; a new number leaves the name
+  // field open for the customer to fill in themselves. Debounced so this
+  // doesn't fire on every keystroke before the 10th digit is typed. Only
+  // ever touches `customer.name`/nameLookupState/nameLocked -- the
+  // selected turf/date/time/duration (owned by the parent page) and
+  // paymentMethod (this component's own state) are never reset by it.
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!normalizedPhone) {
+      // Deferred rather than called synchronously here, so this effect
+      // never setStates as its first, unconditional action (that pattern
+      // causes cascading renders -- see react-hooks/set-state-in-effect).
+      const resetTimer = setTimeout(() => {
+        if (cancelled) return;
+        setNameLookupState("idle");
+        setNameLocked(false);
+      }, 0);
+      return () => {
+        cancelled = true;
+        clearTimeout(resetTimer);
+      };
+    }
+
+    const timer = setTimeout(() => {
+      setNameLookupState("loading");
+      fetch("/api/customers/lookup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: normalizedPhone }),
+      })
+        .then(async (res) => {
+          const body = await res.json();
+          if (!res.ok) throw new Error(body.error ?? "Lookup failed.");
+          if (cancelled) return;
+          if (body.name) {
+            setCustomer((c) => ({ ...c, name: body.name }));
+            setNameLocked(true);
+            setNameLookupState("found");
+          } else {
+            setNameLocked(false);
+            setNameLookupState("not_found");
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setNameLocked(false);
+            setNameLookupState("error");
+          }
+        });
+    }, 350);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [normalizedPhone]);
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -77,6 +146,17 @@ export function BookingSummary({
     if (!phoneResult.ok) validationErrors.phone = phoneResult.error;
     setErrors(validationErrors);
     if (Object.keys(validationErrors).length > 0) return;
+
+    if (nameLookupState === "loading") {
+      // Still checking whether this number already has a saved name --
+      // submitting now could race that lookup. The server would still
+      // resolve the correct canonical customer either way (it does its
+      // own independent lookup and never trusts this field for an
+      // existing number), but waiting avoids a confusing moment where the
+      // name field visibly changes out from under a submit in flight.
+      setSubmitError("Just a moment, checking this mobile number…");
+      return;
+    }
 
     setSubmitting(true);
     setSubmitError(null);
@@ -100,9 +180,9 @@ export function BookingSummary({
         throw new Error(body.error ?? "Something went wrong. Please try again.");
       }
       setConfirmed({
-        reference: body.reference,
         turfName: body.turfName,
         turfWhatsappNumber: body.turfWhatsappNumber,
+        customerName: body.customerName,
         bookingDate: body.bookingDate,
         startTime: body.startTime,
         endTime: body.endTime,
@@ -127,6 +207,8 @@ export function BookingSummary({
     setPaymentMethod("cash");
     setErrors({});
     setSubmitError(null);
+    setNameLookupState("idle");
+    setNameLocked(false);
     onBookingComplete();
   }
 
@@ -137,9 +219,6 @@ export function BookingSummary({
           <CheckCircle2 className="size-5 text-turf-700 mt-0.5 shrink-0" aria-hidden="true" />
           <div className="min-w-0 flex-1">
             <p className="font-semibold text-turf-800">Booking {getCustomerStatusLabel(confirmed.status).toLowerCase()}</p>
-            <p className="text-sm text-turf-700 mt-1">
-              Reference <span className="font-mono text-base font-bold">{confirmed.reference}</span>
-            </p>
             <p className="text-sm text-turf-700 mt-1">
               {confirmed.status === "pending" &&
                 "Your booking is awaiting approval from the turf. We'll keep the slot reserved for you in the meantime."}
@@ -184,9 +263,8 @@ export function BookingSummary({
                 href={buildWhatsappClickToChatUrl(
                   confirmed.turfWhatsappNumber,
                   buildBookingWhatsAppMessage({
-                    shortReference: confirmed.reference,
                     turfName: confirmed.turfName,
-                    customerName: customer.name,
+                    customerName: confirmed.customerName,
                     customerPhone: customer.phone,
                     bookingDateLabel: formatDateLong(confirmed.bookingDate),
                     startTimeLabel: formatTime12Hour(confirmed.startTime),
@@ -214,7 +292,7 @@ export function BookingSummary({
                 Book another slot
               </button>
               <Link
-                href={`/my-bookings?phone=${encodeURIComponent(customer.phone)}&ref=${encodeURIComponent(confirmed.reference)}`}
+                href={`/my-bookings?phone=${encodeURIComponent(customer.phone)}`}
                 className="flex min-h-11 items-center rounded-lg border border-turf-300 bg-white px-4 text-sm font-medium text-turf-700 hover:bg-turf-50"
               >
                 View My Bookings
@@ -259,31 +337,6 @@ export function BookingSummary({
 
       <div className="space-y-3">
         <div>
-          <label htmlFor="customerName" className="block text-xs font-medium text-slate-600 mb-1">
-            Full name
-          </label>
-          <div className="relative">
-            <User className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-slate-400" aria-hidden="true" />
-            <input
-              id="customerName"
-              type="text"
-              autoComplete="name"
-              value={customer.name}
-              onChange={(e) => setCustomer((c) => ({ ...c, name: e.target.value }))}
-              aria-invalid={Boolean(errors.name)}
-              aria-describedby={errors.name ? "customerName-error" : undefined}
-              className="w-full min-h-11 rounded-lg border border-slate-300 pl-9 pr-3 text-sm focus:border-turf-600"
-              placeholder="e.g. Priya Sharma"
-            />
-          </div>
-          {errors.name && (
-            <p id="customerName-error" className="mt-1 text-xs text-red-600">
-              {errors.name}
-            </p>
-          )}
-        </div>
-
-        <div>
           <label htmlFor="customerPhone" className="block text-xs font-medium text-slate-600 mb-1">
             Mobile number
           </label>
@@ -299,9 +352,15 @@ export function BookingSummary({
               onChange={(e) => setCustomer((c) => ({ ...c, phone: restrictToDigits(e.target.value, 10) }))}
               aria-invalid={Boolean(errors.phone)}
               aria-describedby={errors.phone ? "customerPhone-error" : "customerPhone-hint"}
-              className="w-full min-h-11 rounded-lg border border-slate-300 pl-9 pr-3 text-sm focus:border-turf-600"
+              className="w-full min-h-11 rounded-lg border border-slate-300 pl-9 pr-9 text-sm focus:border-turf-600"
               placeholder="e.g. 9876543210"
             />
+            {nameLookupState === "loading" && (
+              <Loader2
+                className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-slate-400 animate-spin"
+                aria-hidden="true"
+              />
+            )}
           </div>
           {errors.phone ? (
             <p id="customerPhone-error" className="mt-1 text-xs text-red-600">
@@ -309,8 +368,49 @@ export function BookingSummary({
             </p>
           ) : (
             <p id="customerPhone-hint" className="mt-1 text-xs text-slate-400">
-              10-digit Indian mobile number. You&apos;ll use this (with your booking reference) to look up your
-              booking later.
+              10-digit Indian mobile number. You&apos;ll use this to look up your booking later.
+            </p>
+          )}
+        </div>
+
+        <div>
+          <label htmlFor="customerName" className="block text-xs font-medium text-slate-600 mb-1">
+            Full name
+          </label>
+          <div className="relative">
+            {nameLocked ? (
+              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-slate-400" aria-hidden="true" />
+            ) : (
+              <User className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-slate-400" aria-hidden="true" />
+            )}
+            <input
+              id="customerName"
+              type="text"
+              autoComplete="name"
+              readOnly={nameLocked}
+              value={customer.name}
+              onChange={(e) => setCustomer((c) => ({ ...c, name: e.target.value }))}
+              aria-invalid={Boolean(errors.name)}
+              aria-describedby={errors.name ? "customerName-error" : "customerName-hint"}
+              className={`w-full min-h-11 rounded-lg border border-slate-300 pl-9 pr-3 text-sm focus:border-turf-600 ${
+                nameLocked ? "bg-slate-50 text-slate-600" : ""
+              }`}
+              placeholder="e.g. Priya Sharma"
+            />
+          </div>
+          {errors.name && (
+            <p id="customerName-error" className="mt-1 text-xs text-red-600">
+              {errors.name}
+            </p>
+          )}
+          {!errors.name && nameLocked && (
+            <p id="customerName-hint" className="mt-1 text-xs text-slate-400">
+              This is the saved name for this mobile number.
+            </p>
+          )}
+          {!errors.name && !nameLocked && nameLookupState === "not_found" && (
+            <p id="customerName-hint" className="mt-1 text-xs text-slate-400">
+              We don&apos;t have a saved name for this number yet &mdash; enter it below.
             </p>
           )}
         </div>
@@ -330,7 +430,7 @@ export function BookingSummary({
 
       <button
         type="submit"
-        disabled={submitting}
+        disabled={submitting || nameLookupState === "loading"}
         className="mt-4 w-full min-h-11 rounded-lg bg-turf-600 text-white text-sm font-semibold hover:bg-turf-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
       >
         {submitting && <Loader2 className="size-4 animate-spin" aria-hidden="true" />}

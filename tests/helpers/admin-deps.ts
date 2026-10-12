@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AdminAuthDeps } from "@/lib/admin-auth";
-import { createFakeSupabaseClient, type FakeTables, type InsertHandler, type RpcHandler } from "./fake-supabase";
+import { createFakeSupabaseClient, type FakeTables, type InsertHandler, type RpcHandler, type UpdateHandler } from "./fake-supabase";
 
 export type AuthScenario = "admin" | "non-admin" | "unauthenticated";
 
@@ -13,7 +13,7 @@ export type AuthScenario = "admin" | "non-admin" | "unauthenticated";
 export function makeAdminDeps(
   tables: FakeTables,
   scenario: AuthScenario,
-  options: { onInsert?: InsertHandler; onRpc?: RpcHandler } = {}
+  options: { onInsert?: InsertHandler; onUpdate?: UpdateHandler; onRpc?: RpcHandler } = {}
 ): AdminAuthDeps {
   const adminUserId = "admin-user-1";
   if (!tables.admin_users) {

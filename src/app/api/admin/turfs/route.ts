@@ -1,11 +1,16 @@
 import { NextResponse } from "next/server";
 import { type AdminAuthDeps, adminAuthErrorResponse, checkAdminAuth, defaultAdminAuthDeps } from "@/lib/admin-auth";
-import { DEFAULT_TURF_WHATSAPP_NUMBER, validateTurfInput, validateTurfPaymentInput } from "@/lib/admin/turf-validation";
+import {
+  DEFAULT_TURF_WHATSAPP_NUMBER,
+  validateTurfDisplayInput,
+  validateTurfInput,
+  validateTurfPaymentInput,
+} from "@/lib/admin/turf-validation";
 
 export const dynamic = "force-dynamic";
 
 const TURF_SELECT_COLUMNS =
-  "id, name, location, sport_type, opening_time, closing_time, slot_interval_minutes, is_active, upi_vpa, upi_phone, payee_name, qr_image_url, whatsapp_number, contact_phone, created_at";
+  "id, name, location, sport_type, opening_time, closing_time, slot_interval_minutes, is_active, upi_vpa, upi_phone, payee_name, qr_image_url, whatsapp_number, contact_phone, is_verified, max_persons, turf_count, amenities, cover_image_url, created_at";
 
 export async function handleTurfsGet(deps: AdminAuthDeps = defaultAdminAuthDeps) {
   const authResult = await checkAdminAuth(deps);
@@ -53,11 +58,15 @@ export async function handleTurfsPost(request: Request, deps: AdminAuthDeps = de
   if (!paymentValidated.ok) {
     return NextResponse.json({ error: paymentValidated.error }, { status: 400 });
   }
+  const displayValidated = validateTurfDisplayInput(body as Record<string, unknown>);
+  if (!displayValidated.ok) {
+    return NextResponse.json({ error: displayValidated.error }, { status: 400 });
+  }
 
   const admin = deps.getAdminClient();
   const { data, error } = await admin
     .from("turfs")
-    .insert({ ...validated.value, ...paymentValidated.value, is_active: true })
+    .insert({ ...validated.value, ...paymentValidated.value, ...displayValidated.value, is_active: true })
     .select(TURF_SELECT_COLUMNS)
     .single();
 

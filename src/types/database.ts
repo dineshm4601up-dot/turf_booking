@@ -21,6 +21,11 @@ export interface TurfRow {
   qr_image_url: string | null;
   whatsapp_number: string;
   contact_phone: string | null;
+  is_verified: boolean;
+  max_persons: number | null;
+  turf_count: number;
+  amenities: string[];
+  cover_image_url: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -35,9 +40,18 @@ export interface TurfPricingRow {
   created_at: string;
 }
 
+export interface CustomerRow {
+  id: string;
+  phone: string;
+  name: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface BookingRow {
   id: string;
   turf_id: string;
+  customer_id: string | null;
   customer_name: string;
   customer_phone: string;
   booking_date: string;
@@ -50,7 +64,6 @@ export interface BookingRow {
   payment_status: "unpaid" | "pending_verification" | "paid" | "failed";
   payment_updated_at: string | null;
   idempotency_key: string | null;
-  short_reference: string;
   created_at: string;
   updated_at: string;
 }

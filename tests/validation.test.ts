@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   isPhoneLike,
   isValidDateString,
-  isValidShortReference,
   isValidTimeString,
   isValidUuid,
   normalizeIndianMobileNumber,
@@ -21,20 +20,6 @@ describe("restrictToDigits", () => {
   });
   it("handles an empty string", () => {
     expect(restrictToDigits("", 10)).toBe("");
-  });
-});
-
-describe("isValidShortReference", () => {
-  it("accepts exactly 5 digits", () => {
-    expect(isValidShortReference("48217")).toBe(true);
-    expect(isValidShortReference("10000")).toBe(true);
-    expect(isValidShortReference("99999")).toBe(true);
-  });
-  it("rejects anything else", () => {
-    expect(isValidShortReference("4821")).toBe(false);
-    expect(isValidShortReference("482177")).toBe(false);
-    expect(isValidShortReference("4821a")).toBe(false);
-    expect(isValidShortReference("")).toBe(false);
   });
 });
 

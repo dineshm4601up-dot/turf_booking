@@ -1,3 +1,12 @@
+-- SUPERSEDED: a later business decision removed the short-reference
+-- feature entirely (customers now look up bookings by mobile number alone,
+-- with no reference/OTP). See 20261015000001_remove_short_booking_reference
+-- for the rollback. That migration is written with IF EXISTS checks
+-- throughout, so it's safe to run whether or not this one was ever applied.
+-- Kept here, unedited below this notice, as the historical record of what
+-- was built and why -- do not run this file on a fresh environment; skip
+-- straight from 20261014000001 to 20261015000001 instead.
+--
 -- Replaces the long uuid shown to customers with a short, unique 5-digit
 -- reference (e.g. "48217"). The uuid `id` column remains the real primary
 -- key / foreign key everywhere internally; `short_reference` is purely a

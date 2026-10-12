@@ -1,5 +1,6 @@
 import { timeToMinutes } from "@/lib/time";
 import { isPhoneLike, isValidTimeString, validateNonBlankString, validatePositiveInteger } from "@/lib/validation";
+import { isAmenityKey } from "@/config/turf";
 
 export interface TurfInputResult {
   name: string;
@@ -130,5 +131,49 @@ export function validateTurfPaymentInput(input: Record<string, unknown>): TurfPa
       whatsapp_number: whatsappResult.value,
       contact_phone: contactPhoneResult.value,
     },
+  };
+}
+
+export interface TurfDisplayInputResult {
+  is_verified: boolean;
+  max_persons: number | null;
+  turf_count: number;
+  amenities: string[];
+}
+
+export type TurfDisplayValidation =
+  | { ok: true; value: TurfDisplayInputResult }
+  | { ok: false; error: string };
+
+/**
+ * Validates the Phase 8 home-page-redesign fields: all optional-ish in the
+ * sense that a turf can be saved without any of them configured yet (the
+ * customer UI simply omits the corresponding section), except turfCount
+ * which always has a sensible default of 1.
+ */
+export function validateTurfDisplayInput(input: Record<string, unknown>): TurfDisplayValidation {
+  const isVerified = Boolean(input.isVerified);
+
+  let maxPersons: number | null = null;
+  if (input.maxPersons !== undefined && input.maxPersons !== null && input.maxPersons !== "") {
+    const maxPersonsResult = validatePositiveInteger(input.maxPersons, { min: 1, max: 1000, label: "maxPersons" });
+    if (!maxPersonsResult.ok) return { ok: false, error: maxPersonsResult.error };
+    maxPersons = maxPersonsResult.value;
+  }
+
+  const turfCountResult = validatePositiveInteger(input.turfCount ?? 1, { min: 1, max: 100, label: "turfCount" });
+  if (!turfCountResult.ok) return { ok: false, error: turfCountResult.error };
+
+  let amenities: string[] = [];
+  if (input.amenities !== undefined && input.amenities !== null) {
+    if (!Array.isArray(input.amenities) || !input.amenities.every((a) => typeof a === "string" && isAmenityKey(a))) {
+      return { ok: false, error: "amenities must be an array of known amenity values." };
+    }
+    amenities = [...new Set(input.amenities as string[])];
+  }
+
+  return {
+    ok: true,
+    value: { is_verified: isVerified, max_persons: maxPersons, turf_count: turfCountResult.value, amenities },
   };
 }

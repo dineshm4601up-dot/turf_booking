@@ -5,16 +5,17 @@ import { getTurfUpiConfig, type PaymentMethod, type PaymentStatus } from "@/conf
 import { getTodayDateString } from "@/lib/time";
 import { buildUpiPaymentUri } from "@/lib/upi";
 import { sortBookingsForLookup } from "@/lib/booking-lookup";
-import { isValidShortReference, validateCustomerPhone } from "@/lib/validation";
+import { validateCustomerPhone } from "@/lib/validation";
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
-// Tighter than the booking-creation limit: the lookup credential is now a
-// 5-digit code (see the module doc comment below for why), so this budget
-// is deliberately stingy to make brute-forcing it impractical.
-const RATE_LIMIT_MAX_REQUESTS = 8;
-const RATE_LIMIT_WINDOW_MS = 10 * 60_000;
+// Abuse protection for a lookup that's intentionally phone-number-only (see
+// the module doc comment below): this bounds how many distinct phone
+// numbers one client can probe per window, without requiring any paid
+// SMS/OTP service.
+const RATE_LIMIT_MAX_REQUESTS = 15;
+const RATE_LIMIT_WINDOW_MS = 5 * 60_000;
 
 interface BookingRow {
   id: string;
@@ -27,7 +28,6 @@ interface BookingRow {
   status: string;
   payment_method: PaymentMethod | null;
   payment_status: PaymentStatus;
-  short_reference: string;
   created_at: string;
   // supabase-js can't infer the embed's cardinality without a typed
   // Database schema, so it may type this as an object or an array
@@ -47,24 +47,27 @@ function toLookupResponse(booking: BookingRow) {
     const upiConfig = getTurfUpiConfig(turf);
     if (upiConfig) {
       const amount = Number(booking.total_price);
+      const note = `${turf.name} ${booking.booking_date} ${booking.start_time}`;
       upi = {
         payeeVpa: upiConfig.payeeVpa,
         payeeName: upiConfig.payeeName,
         payeePhone: upiConfig.payeePhone,
         amount,
-        reference: booking.short_reference,
+        note,
         uri: buildUpiPaymentUri({
           payeeVpa: upiConfig.payeeVpa,
           payeeName: upiConfig.payeeName,
           amount,
-          transactionNote: booking.short_reference,
+          transactionNote: note,
         }),
       };
     }
   }
 
+  // Deliberately omits `id` (internal uuid) and `customer_phone`: nothing
+  // in the UI needs either, and the booking is identified to the customer
+  // by its turf/date/time/status instead.
   return {
-    reference: booking.short_reference,
     turfName: turf?.name ?? "",
     bookingDate: booking.booking_date,
     startTime: booking.start_time,
@@ -85,22 +88,16 @@ export interface BookingLookupDeps {
 const defaultDeps: BookingLookupDeps = { getAdminClient: createSupabaseAdminClient };
 
 /**
- * A phone number alone proves nothing about ownership, so this never
- * returns data from a phone number by itself. The caller must also supply
- * the specific 5-digit booking reference shown on one of their own
- * confirmations. Only once that exact (phone, reference) pair matches an
- * existing booking do we reveal every booking under that phone number.
- *
- * Security trade-off, documented rather than hidden: a 5-digit reference
- * (90,000 possible values) is far weaker than the Phase 5 design this
- * replaces, which used the booking's full uuid (effectively unguessable)
- * as the credential. That uuid is no longer shown to customers at all
- * (replaced by the short reference everywhere, per spec), so it can no
- * longer be what the customer types back in here either. The tighter rate
- * limit above and the still-required exact phone match are the mitigation;
- * see README for the full trade-off writeup. True OTP verification isn't
- * implemented: no SMS/OTP provider is configured in this environment, and
- * this app does not pretend one is.
+ * Business requirement: customers look up their own bookings using only
+ * their 10-digit mobile number -- no OTP, no booking reference, no login.
+ * This intentionally means anyone who knows a customer's mobile number can
+ * see that customer's booking history (turf, date, time, amount, payment
+ * status). That is a real, deliberate reduction in confidentiality versus a
+ * design that required a second secret -- it is not hidden here: the phone
+ * number is still never returned in the response, no admin-only fields
+ * (status-changing endpoints, pricing config, other customers' data) are
+ * reachable from this route, and rate limiting bounds bulk probing of
+ * numbers from a single client. See README for the full writeup.
  */
 export async function handleBookingLookupRequest(
   request: Request,
@@ -129,35 +126,13 @@ export async function handleBookingLookupRequest(
   if (!phoneResult.ok) {
     return NextResponse.json({ error: phoneResult.error }, { status: 400 });
   }
-  const reference = typeof input.reference === "string" ? input.reference.trim() : "";
-  if (!isValidShortReference(reference)) {
-    return NextResponse.json({ error: "A valid 5-digit booking reference is required." }, { status: 400 });
-  }
 
   const admin = deps.getAdminClient();
-
-  const { data: ownedBooking, error: ownershipError } = await admin
-    .from("bookings")
-    .select("id")
-    .eq("short_reference", reference)
-    .eq("customer_phone", phoneResult.value)
-    .maybeSingle();
-
-  if (ownershipError) {
-    console.error("bookings/lookup: ownership check failed", ownershipError);
-    return NextResponse.json({ error: "Something went wrong. Please try again." }, { status: 500 });
-  }
-  if (!ownedBooking) {
-    return NextResponse.json(
-      { error: "No booking found for that mobile number and reference. Double-check both and try again." },
-      { status: 404 }
-    );
-  }
 
   const { data: bookings, error: bookingsError } = await admin
     .from("bookings")
     .select(
-      "id, turf_id, booking_date, start_time, end_time, duration_minutes, total_price, status, payment_method, payment_status, short_reference, created_at, turfs(name, upi_vpa, payee_name, upi_phone)"
+      "id, turf_id, booking_date, start_time, end_time, duration_minutes, total_price, status, payment_method, payment_status, created_at, turfs(name, upi_vpa, payee_name, upi_phone)"
     )
     .eq("customer_phone", phoneResult.value);
 

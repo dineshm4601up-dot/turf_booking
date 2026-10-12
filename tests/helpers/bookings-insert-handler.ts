@@ -1,32 +1,13 @@
 import type { FakeError, FakeTables, InsertHandler } from "./fake-supabase";
 
 /**
- * Lets a test force the next N insert attempts to collide on
- * short_reference (simulating two concurrent requests picking the same
- * random candidate), to verify the route's retry loop actually retries
- * rather than just failing. Call reset (0) in afterEach/beforeEach so one
- * test's setting never leaks into the next.
- */
-let forcedShortReferenceCollisions = 0;
-export function forceShortReferenceCollisions(count: number): void {
-  forcedShortReferenceCollisions = count;
-}
-
-let nextShortReference = 10000;
-function generateShortReference(): string {
-  const value = String(nextShortReference);
-  nextShortReference += 1;
-  return value;
-}
-
-/**
  * Simulates, in memory, the Postgres guarantees the real schema provides
  * (see supabase/migrations): the booking overlap exclusion constraint
- * (23P01), the partial unique index on idempotency_key (23505), and the
- * unique constraint on short_reference (23505). This lets route tests
- * verify OUR error-handling maps those codes to the right HTTP responses,
- * without a real database. It is not a substitute for the real
- * constraints -- see supabase/tests/booking_overlap_tests.sql for that.
+ * (23P01) and the partial unique index on idempotency_key (23505). This
+ * lets route tests verify OUR error-handling maps those codes to the right
+ * HTTP responses, without a real database. It is not a substitute for the
+ * real constraints -- see supabase/tests/booking_overlap_tests.sql for
+ * that.
  */
 export const bookingsInsertHandler: InsertHandler = (
   table: string,
@@ -56,19 +37,9 @@ export const bookingsInsertHandler: InsertHandler = (
     return { error };
   }
 
-  if (forcedShortReferenceCollisions > 0) {
-    forcedShortReferenceCollisions -= 1;
-    const error: FakeError = {
-      code: "23505",
-      message: 'duplicate key value violates unique constraint "bookings_short_reference_unique"',
-    };
-    return { error };
-  }
-
   return {
     data: {
       id: `booking-${existing.length + 1}`,
-      short_reference: generateShortReference(),
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       ...row,

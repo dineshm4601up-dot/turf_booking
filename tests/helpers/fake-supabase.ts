@@ -13,6 +13,19 @@ export type InsertHandler = (
   tables: FakeTables
 ) => { data?: Record<string, unknown>; error?: FakeError };
 
+/**
+ * Like InsertHandler, but for simulating a constraint violation on
+ * `.update()` (e.g. a unique index on a column being edited to a value
+ * another row already has). Returning `{}` (the default, if no onUpdate is
+ * given) falls through to the normal "always succeeds" update behavior.
+ */
+export type UpdateHandler = (
+  table: string,
+  partial: Record<string, unknown>,
+  matching: Record<string, unknown>[],
+  tables: FakeTables
+) => { error?: FakeError } | undefined;
+
 export type RpcHandler = (
   fnName: string,
   args: Record<string, unknown>,
@@ -56,7 +69,7 @@ function parseOrFilter(expr: string): (row: Record<string, unknown>) => boolean 
  */
 export function createFakeSupabaseClient(
   tables: FakeTables,
-  options: { onInsert?: InsertHandler; onRpc?: RpcHandler } = {}
+  options: { onInsert?: InsertHandler; onUpdate?: UpdateHandler; onRpc?: RpcHandler } = {}
 ): SupabaseClient {
   function from(table: string) {
     const filters: Array<(row: Record<string, unknown>) => boolean> = [];
@@ -138,9 +151,14 @@ export function createFakeSupabaseClient(
           } else if (mode === "update") {
             const current = tables[table] ?? [];
             const matching = current.filter((row) => filters.every((f) => f(row)));
-            matching.forEach((row) => Object.assign(row, writeRow));
-            const data = singleMode === "none" ? matching : matching[0] ?? null;
-            result = { data, error: null };
+            const outcome = writeRow ? options.onUpdate?.(table, writeRow, matching, tables) : undefined;
+            if (outcome?.error) {
+              result = { data: null, error: outcome.error };
+            } else {
+              matching.forEach((row) => Object.assign(row, writeRow));
+              const data = singleMode === "none" ? matching : matching[0] ?? null;
+              result = { data, error: null };
+            }
           } else if (mode === "delete") {
             const current = tables[table] ?? [];
             const matching = current.filter((row) => filters.every((f) => f(row)));

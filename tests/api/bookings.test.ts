@@ -1,7 +1,7 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { handleBookingRequest } from "../../src/app/api/bookings/route";
 import { createFakeSupabaseClient, type FakeTables } from "../helpers/fake-supabase";
-import { bookingsInsertHandler, forceShortReferenceCollisions } from "../helpers/bookings-insert-handler";
+import { bookingsInsertHandler } from "../helpers/bookings-insert-handler";
 
 const TURF_ID = "11111111-1111-4111-8111-111111111111";
 // Tuesday, in the future relative to this suite's run date.
@@ -284,7 +284,7 @@ describe("POST /api/bookings - payment method", () => {
     expect(body.upi).toBeNull();
   });
 
-  it("sets payment_status to pending_verification for a upi booking and returns a UPI panel using the short reference", async () => {
+  it("sets payment_status to pending_verification for a upi booking and returns a UPI panel with a descriptive payment note", async () => {
     const tables = buildTablesWithUpi();
     const res = await handleBookingRequest(makeRequest(validBody({ paymentMethod: "upi" })), {
       getAdminClient: () => createFakeSupabaseClient(tables, { onInsert: bookingsInsertHandler }),
@@ -295,11 +295,11 @@ describe("POST /api/bookings - payment method", () => {
     expect(body.paymentStatus).toBe("pending_verification");
     expect(body.upi).not.toBeNull();
     expect(body.upi.payeeVpa).toBe("turf@upi");
-    expect(body.upi.reference).toBe(body.reference);
-    expect(/^\d{5}$/.test(body.reference)).toBe(true);
+    expect(typeof body.upi.note).toBe("string");
+    expect(body.upi.note.length).toBeGreaterThan(0);
     expect(body.upi.amount).toBe(body.totalPrice);
     expect(body.upi.uri).toContain("upi://pay?");
-    expect(body.upi.uri).toContain(`tn=${body.reference}`);
+    expect(body.reference).toBeUndefined();
   });
 
   it("rejects a upi booking when this turf hasn't configured UPI", async () => {
@@ -331,40 +331,124 @@ describe("POST /api/bookings - payment method", () => {
   });
 });
 
-describe("POST /api/bookings - short reference", () => {
-  afterEach(() => {
-    forceShortReferenceCollisions(0);
-  });
+/**
+ * Simulates the real unique index on customers.phone (idx_customers_phone_unique,
+ * see supabase/migrations/20261017000001_create_customers.sql): an insert
+ * for a phone that already has a customer row fails with 23505, exactly
+ * like a real concurrent-insert race would, so these tests exercise the
+ * route's actual race-handling logic rather than assuming it works.
+ */
+function customersAwareInsertHandler(table: string, row: Record<string, unknown>, tables: FakeTables) {
+  if (table !== "customers") return bookingsInsertHandler(table, row, tables);
+  const existing = tables.customers ?? [];
+  if (existing.some((c) => c.phone === row.phone)) {
+    return {
+      error: { code: "23505", message: 'duplicate key value violates unique constraint "idx_customers_phone_unique"' },
+    };
+  }
+  return {
+    data: {
+      id: `customer-${existing.length + 1}`,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      ...row,
+    },
+  };
+}
 
-  it("returns a 5-digit string reference on every booking", async () => {
+describe("POST /api/bookings - Customer Master", () => {
+  it("creates a new customer record for a brand-new phone number", async () => {
     const tables = buildTables();
-    const res = await handleBookingRequest(makeRequest(validBody()), {
-      getAdminClient: () => createFakeSupabaseClient(tables, { onInsert: bookingsInsertHandler }),
-    });
-    const body = await res.json();
-    expect(typeof body.reference).toBe("string");
-    expect(/^\d{5}$/.test(body.reference)).toBe(true);
-  });
-
-  it("retries once and still succeeds after a simulated short_reference collision", async () => {
-    forceShortReferenceCollisions(1);
-    const tables = buildTables();
-    const res = await handleBookingRequest(makeRequest(validBody({ startTime: "11:00" })), {
-      getAdminClient: () => createFakeSupabaseClient(tables, { onInsert: bookingsInsertHandler }),
+    const res = await handleBookingRequest(makeRequest(validBody({ customerName: "New Customer" })), {
+      getAdminClient: () => createFakeSupabaseClient(tables, { onInsert: customersAwareInsertHandler }),
     });
     expect(res.status).toBe(201);
     const body = await res.json();
-    expect(/^\d{5}$/.test(body.reference)).toBe(true);
+    expect(body.customerName).toBe("New Customer");
+    expect(tables.customers).toHaveLength(1);
+    expect(tables.customers![0]!.name).toBe("New Customer");
+    expect(tables.customers![0]!.phone).toBe("9876543210");
+    expect(tables.bookings![0]!.customer_id).toBe(tables.customers![0]!.id);
+    // Never exposes the internal customer id to the client.
+    expect(body.customerId).toBeUndefined();
   });
 
-  it("gives up after exhausting its retry budget and returns a clear error", async () => {
-    forceShortReferenceCollisions(10); // more than MAX_SHORT_REFERENCE_RETRIES
+  it("rejects a brand-new phone number with an invalid name", async () => {
     const tables = buildTables();
-    const res = await handleBookingRequest(makeRequest(validBody({ startTime: "12:00" })), {
-      getAdminClient: () => createFakeSupabaseClient(tables, { onInsert: bookingsInsertHandler }),
+    const res = await handleBookingRequest(makeRequest(validBody({ customerName: "X" })), {
+      getAdminClient: () => createFakeSupabaseClient(tables, { onInsert: customersAwareInsertHandler }),
     });
-    expect(res.status).toBe(500);
+    expect(res.status).toBe(400);
+    expect(tables.customers ?? []).toHaveLength(0);
+  });
+
+  it("uses the existing customer's saved name, ignoring a different name submitted by the browser", async () => {
+    const tables = buildTables({
+      customers: [
+        { id: "customer-existing", phone: "9876543210", name: "Saved Real Name", created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+      ],
+    });
+    const res = await handleBookingRequest(
+      makeRequest(validBody({ customerName: "A Totally Different Name" })),
+      { getAdminClient: () => createFakeSupabaseClient(tables, { onInsert: customersAwareInsertHandler }) }
+    );
+    expect(res.status).toBe(201);
     const body = await res.json();
-    expect(body.error).toMatch(/unique booking reference/i);
+    expect(body.customerName).toBe("Saved Real Name");
+    // No second customer record was created for the same phone.
+    expect(tables.customers).toHaveLength(1);
+    expect(tables.bookings![0]!.customer_id).toBe("customer-existing");
+  });
+
+  it("succeeds for an existing customer even without a customerName in the request", async () => {
+    const tables = buildTables({
+      customers: [
+        { id: "customer-existing", phone: "9876543210", name: "Saved Real Name", created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+      ],
+    });
+    const body = validBody();
+    delete (body as Record<string, unknown>).customerName;
+    const res = await handleBookingRequest(makeRequest(body), {
+      getAdminClient: () => createFakeSupabaseClient(tables, { onInsert: customersAwareInsertHandler }),
+    });
+    expect(res.status).toBe(201);
+    const resBody = await res.json();
+    expect(resBody.customerName).toBe("Saved Real Name");
+  });
+
+  it("handles a concurrent duplicate-phone insert race safely, using the single canonical customer", async () => {
+    // This request's own SELECT finds no existing customer (empty table at
+    // that point) and proceeds to INSERT. The insert handler simulates a
+    // genuinely concurrent request winning the race in between: it injects
+    // the "other" request's customer row at the moment this insert would
+    // have landed, and returns the 23505 this request's insert would get
+    // in real Postgres -- exercising the route's actual post-failure
+    // re-SELECT-and-use-the-winner logic, not just a pre-seeded lookup.
+    const tables = buildTables({ customers: [] });
+    const raceInsertHandler = (table: string, row: Record<string, unknown>, innerTables: FakeTables) => {
+      if (table !== "customers") return bookingsInsertHandler(table, row, innerTables);
+      innerTables.customers = [
+        {
+          id: "winner-customer",
+          phone: row.phone,
+          name: "Race Winner Name",
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+      ];
+      return {
+        error: { code: "23505", message: 'duplicate key value violates unique constraint "idx_customers_phone_unique"' },
+      };
+    };
+
+    const res = await handleBookingRequest(
+      makeRequest(validBody({ customerName: "This Request Lost The Race" })),
+      { getAdminClient: () => createFakeSupabaseClient(tables, { onInsert: raceInsertHandler }) }
+    );
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.customerName).toBe("Race Winner Name");
+    expect(tables.customers).toHaveLength(1); // still exactly one customer for this phone
+    expect(tables.bookings![0]!.customer_id).toBe("winner-customer");
   });
 });

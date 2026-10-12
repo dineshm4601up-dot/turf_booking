@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { type AdminAuthDeps, adminAuthErrorResponse, checkAdminAuth, defaultAdminAuthDeps } from "@/lib/admin-auth";
-import { validateTurfInput, validateTurfPaymentInput } from "@/lib/admin/turf-validation";
+import { validateTurfDisplayInput, validateTurfInput, validateTurfPaymentInput } from "@/lib/admin/turf-validation";
 import { isValidUuid } from "@/lib/validation";
 
 export const dynamic = "force-dynamic";
 
 const TURF_SELECT_COLUMNS =
-  "id, name, location, sport_type, opening_time, closing_time, slot_interval_minutes, is_active, upi_vpa, upi_phone, payee_name, qr_image_url, whatsapp_number, contact_phone, created_at";
+  "id, name, location, sport_type, opening_time, closing_time, slot_interval_minutes, is_active, upi_vpa, upi_phone, payee_name, qr_image_url, whatsapp_number, contact_phone, is_verified, max_persons, turf_count, amenities, cover_image_url, created_at";
 
 interface ExistingTurfRow {
   id: string;
@@ -22,6 +22,10 @@ interface ExistingTurfRow {
   payee_name: string | null;
   whatsapp_number: string;
   contact_phone: string | null;
+  is_verified: boolean;
+  max_persons: number | null;
+  turf_count: number;
+  amenities: string[];
 }
 
 export async function handleTurfPatch(request: Request, turfId: string, deps: AdminAuthDeps = defaultAdminAuthDeps) {
@@ -48,7 +52,7 @@ export async function handleTurfPatch(request: Request, turfId: string, deps: Ad
   const { data: existing, error: fetchError } = await admin
     .from("turfs")
     .select(
-      "id, name, location, sport_type, opening_time, closing_time, slot_interval_minutes, is_active, upi_vpa, upi_phone, payee_name, whatsapp_number, contact_phone"
+      "id, name, location, sport_type, opening_time, closing_time, slot_interval_minutes, is_active, upi_vpa, upi_phone, payee_name, whatsapp_number, contact_phone, is_verified, max_persons, turf_count, amenities"
     )
     .eq("id", turfId)
     .maybeSingle<ExistingTurfRow>();
@@ -87,11 +91,22 @@ export async function handleTurfPatch(request: Request, turfId: string, deps: Ad
     return NextResponse.json({ error: paymentValidated.error }, { status: 400 });
   }
 
+  const mergedDisplay = {
+    isVerified: input.isVerified ?? existing.is_verified,
+    maxPersons: input.maxPersons ?? existing.max_persons,
+    turfCount: input.turfCount ?? existing.turf_count,
+    amenities: input.amenities ?? existing.amenities,
+  };
+  const displayValidated = validateTurfDisplayInput(mergedDisplay);
+  if (!displayValidated.ok) {
+    return NextResponse.json({ error: displayValidated.error }, { status: 400 });
+  }
+
   const isActive = typeof input.isActive === "boolean" ? input.isActive : existing.is_active;
 
   const { data: updated, error: updateError } = await admin
     .from("turfs")
-    .update({ ...validated.value, ...paymentValidated.value, is_active: isActive })
+    .update({ ...validated.value, ...paymentValidated.value, ...displayValidated.value, is_active: isActive })
     .eq("id", turfId)
     .select(TURF_SELECT_COLUMNS)
     .single();

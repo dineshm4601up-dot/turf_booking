@@ -23,7 +23,6 @@ function buildTables(): FakeTables {
         duration_minutes: 60,
         total_price: 800,
         status: "pending",
-        short_reference: "10001",
         created_at: "2026-10-12T10:00:00.000Z",
       },
       {
@@ -108,18 +107,7 @@ describe("GET /api/admin/bookings", () => {
     expect(body.bookings[0].id).toBe(BOOKING_PENDING);
   });
 
-  it("searches by the 5-digit short reference", async () => {
-    const tables = buildTables();
-    const res = await handleAdminBookingsGet(
-      new Request("http://localhost/api/admin/bookings?search=10001"),
-      makeAdminDeps(tables, "admin")
-    );
-    const body = await res.json();
-    expect(body.bookings).toHaveLength(1);
-    expect(body.bookings[0].id).toBe(BOOKING_PENDING);
-  });
-
-  it("searches by exact booking reference (uuid)", async () => {
+  it("searches by exact booking id (uuid)", async () => {
     const tables = buildTables();
     const res = await handleAdminBookingsGet(
       new Request(`http://localhost/api/admin/bookings?search=${BOOKING_CONFIRMED}`),
@@ -141,6 +129,93 @@ describe("GET /api/admin/bookings", () => {
     expect(nonAdmin.status).toBe(403);
     const nonAdminBody = await nonAdmin.json();
     expect(nonAdminBody.bookings).toBeUndefined();
+  });
+});
+
+describe("GET /api/admin/bookings - Customer Master integration", () => {
+  const CUSTOMER_ID = "55555555-5555-4555-8555-555555555555";
+
+  function buildTablesWithCustomer(): FakeTables {
+    return {
+      bookings: [
+        {
+          id: BOOKING_PENDING,
+          turf_id: TURF_ID,
+          customer_id: CUSTOMER_ID,
+          customer_name: "Alice (as typed at booking time)",
+          customer_phone: "9000000001",
+          booking_date: "2026-10-20",
+          start_time: "10:00",
+          end_time: "11:00",
+          duration_minutes: 60,
+          total_price: 800,
+          status: "pending",
+          created_at: "2026-10-12T10:00:00.000Z",
+          customers: { name: "Alice Canonical", phone: "9000000001" },
+        },
+        {
+          id: BOOKING_CONFIRMED,
+          turf_id: TURF_ID,
+          customer_id: null,
+          customer_name: "Unlinked Historical Row",
+          customer_phone: "9000000099",
+          booking_date: "2026-10-21",
+          start_time: "12:00",
+          end_time: "13:00",
+          duration_minutes: 60,
+          total_price: 900,
+          status: "confirmed",
+          created_at: "2026-10-12T11:00:00.000Z",
+          customers: null,
+        },
+      ],
+    };
+  }
+
+  it("displays the canonical customer name/phone over the booking's own stored values", async () => {
+    const tables = buildTablesWithCustomer();
+    const res = await handleAdminBookingsGet(new Request("http://localhost/api/admin/bookings"), makeAdminDeps(tables, "admin"));
+    const body = await res.json();
+    const linked = body.bookings.find((b: { id: string }) => b.id === BOOKING_PENDING);
+    expect(linked.customer_name).toBe("Alice Canonical");
+    expect(linked.customer_phone).toBe("9000000001");
+  });
+
+  it("falls back to the booking's own stored name/phone when it was never linked to a customer", async () => {
+    const tables = buildTablesWithCustomer();
+    const res = await handleAdminBookingsGet(new Request("http://localhost/api/admin/bookings"), makeAdminDeps(tables, "admin"));
+    const body = await res.json();
+    const unlinked = body.bookings.find((b: { id: string }) => b.id === BOOKING_CONFIRMED);
+    expect(unlinked.customer_name).toBe("Unlinked Historical Row");
+  });
+
+  it("never leaks the raw customers embed object in the response", async () => {
+    const tables = buildTablesWithCustomer();
+    const res = await handleAdminBookingsGet(new Request("http://localhost/api/admin/bookings"), makeAdminDeps(tables, "admin"));
+    const body = await res.json();
+    for (const booking of body.bookings) {
+      expect(booking.customers).toBeUndefined();
+    }
+  });
+
+  it("filters by customerId", async () => {
+    const tables = buildTablesWithCustomer();
+    const res = await handleAdminBookingsGet(
+      new Request(`http://localhost/api/admin/bookings?customerId=${CUSTOMER_ID}`),
+      makeAdminDeps(tables, "admin")
+    );
+    const body = await res.json();
+    expect(body.bookings).toHaveLength(1);
+    expect(body.bookings[0].id).toBe(BOOKING_PENDING);
+  });
+
+  it("rejects a malformed customerId", async () => {
+    const tables = buildTablesWithCustomer();
+    const res = await handleAdminBookingsGet(
+      new Request("http://localhost/api/admin/bookings?customerId=not-a-uuid"),
+      makeAdminDeps(tables, "admin")
+    );
+    expect(res.status).toBe(400);
   });
 });
 

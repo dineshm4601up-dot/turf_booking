@@ -12,7 +12,6 @@ import { restrictToDigits, validateCustomerPhone } from "@/lib/validation";
 import { UpiPaymentPanel, type UpiPanelData } from "@/components/booking/UpiPaymentPanel";
 
 interface LookupBooking {
-  reference: string;
   turfName: string;
   bookingDate: string;
   startTime: string;
@@ -42,29 +41,21 @@ export default function MyBookingsPage() {
 function MyBookingsContent() {
   const searchParams = useSearchParams();
   const initialPhone = restrictToDigits(searchParams.get("phone") ?? "", 10);
-  const initialReference = restrictToDigits(searchParams.get("ref") ?? "", 5);
-  const hasAutoLookupParams =
-    validateCustomerPhone(initialPhone).ok && /^\d{5}$/.test(initialReference);
+  const hasAutoLookupParams = validateCustomerPhone(initialPhone).ok;
 
   const [phone, setPhone] = useState(initialPhone);
-  const [reference, setReference] = useState(initialReference);
   const [fieldError, setFieldError] = useState<string | null>(null);
   const [state, setState] = useState<LookupState>(() => (hasAutoLookupParams ? { status: "loading" } : { status: "idle" }));
 
-  async function runLookup(event?: React.FormEvent, overridePhone?: string, overrideReference?: string) {
+  async function runLookup(event?: React.FormEvent, overridePhone?: string) {
     event?.preventDefault();
     const phoneValue = overridePhone ?? phone;
-    const referenceValue = overrideReference ?? reference;
 
     // Client-side validation is a convenience, not the real guard: the
     // server re-validates everything and never trusts this.
     const phoneResult = validateCustomerPhone(phoneValue);
     if (!phoneResult.ok) {
       setFieldError(phoneResult.error);
-      return;
-    }
-    if (!/^\d{5}$/.test(referenceValue)) {
-      setFieldError("Enter the 5-digit booking reference from your confirmation.");
       return;
     }
     setFieldError(null);
@@ -74,7 +65,7 @@ function MyBookingsContent() {
       const res = await fetch("/api/bookings/lookup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: phoneValue, reference: referenceValue }),
+        body: JSON.stringify({ phone: phoneValue }),
       });
       const body = await res.json();
       if (!res.ok) throw new Error(body.error ?? "Failed to look up bookings.");
@@ -85,10 +76,8 @@ function MyBookingsContent() {
   }
 
   // Convenience auto-fill (not a security mechanism): the confirmation
-  // screen's "View My Bookings" link carries ?phone=&ref= so a customer who
-  // just booked doesn't have to retype anything. Anyone else following the
-  // same link still needs to actually know both values -- this doesn't
-  // bypass the lookup API's own checks. Fetch logic is inlined (rather than
+  // screen's "View My Bookings" link carries ?phone= so a customer who just
+  // booked doesn't have to retype it. Fetch logic is inlined (rather than
   // calling the shared runLookup) so this effect never calls setState
   // synchronously -- the initial `state` above already accounts for this
   // case via its lazy initializer.
@@ -99,7 +88,7 @@ function MyBookingsContent() {
     fetch("/api/bookings/lookup", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ phone: initialPhone, reference: initialReference }),
+      body: JSON.stringify({ phone: initialPhone }),
     })
       .then(async (res) => {
         const body = await res.json();
@@ -150,24 +139,8 @@ function MyBookingsContent() {
             placeholder="e.g. 9876543210"
             className="w-full min-h-11 rounded-lg border border-slate-300 px-3 text-sm focus:border-turf-600"
           />
-        </div>
-        <div>
-          <label htmlFor="lookupReference" className="block text-xs font-medium text-slate-600 mb-1">
-            Booking reference (5 digits)
-          </label>
-          <input
-            id="lookupReference"
-            type="text"
-            inputMode="numeric"
-            maxLength={5}
-            value={reference}
-            onChange={(e) => setReference(restrictToDigits(e.target.value, 5))}
-            placeholder="e.g. 48217"
-            className="w-full min-h-11 rounded-lg border border-slate-300 px-3 text-sm font-mono tracking-widest focus:border-turf-600"
-          />
           <p className="mt-1 text-xs text-slate-400">
-            For your security, we need both your mobile number and the 5-digit reference from one of your
-            confirmations &mdash; a mobile number alone isn&apos;t enough to look up your bookings.
+            Enter the 10-digit mobile number you booked with. No reference number or OTP needed.
           </p>
         </div>
 
@@ -223,12 +196,12 @@ function MyBookingsContent() {
 
           {state.bookings.length === 0 && (
             <p className="text-sm text-slate-500 bg-slate-100 rounded-lg px-3 py-6 text-center">
-              No bookings found for this mobile number.
+              No bookings found for this mobile number. Please check the number and try again.
             </p>
           )}
 
-          {state.bookings.map((booking) => (
-            <BookingLookupCard key={booking.reference} booking={booking} />
+          {state.bookings.map((booking, index) => (
+            <BookingLookupCard key={index} booking={booking} />
           ))}
         </div>
       )}
@@ -256,10 +229,6 @@ function BookingLookupCard({ booking }: { booking: LookupBooking }) {
           {getCustomerStatusLabel(booking.status)}
         </span>
       </div>
-
-      <p className="mt-1 text-sm text-slate-500">
-        Reference <span className="font-mono text-base font-bold text-slate-800">{booking.reference}</span>
-      </p>
 
       <dl className="grid grid-cols-2 gap-y-1 text-sm mt-3">
         <dt className="text-slate-500">Time</dt>

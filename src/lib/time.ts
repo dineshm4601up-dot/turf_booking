@@ -96,6 +96,23 @@ export function getDayOfWeek(dateStr: string): number {
   return new Date(`${dateStr}T00:00:00Z`).getUTCDay();
 }
 
+/**
+ * Total operating hours between opening and closing time, formatted for
+ * display. Equal opening/closing times (e.g. "06:00"-"06:00") mean the turf
+ * never closes -- a full 24-hour day, not a 0-hour one -- since the turf
+ * schema has no separate "24 hours" flag; this is the one place that
+ * special case needs to be handled explicitly rather than naively
+ * subtracting the two times.
+ */
+export function getOperatingHoursLabel(openingTime: string, closingTime: string): string {
+  const openMinutes = timeToMinutes(openingTime);
+  const closeMinutes = timeToMinutes(closingTime);
+  const spanMinutes = closeMinutes === openMinutes ? 1440 : ((closeMinutes - openMinutes + 1440) % 1440);
+  const hours = spanMinutes / 60;
+  const label = Number.isInteger(hours) ? String(hours) : hours.toFixed(1);
+  return `${label} hours`;
+}
+
 export function formatDateLong(dateStr: string): string {
   const date = new Date(`${dateStr}T00:00:00`);
   return date.toLocaleDateString(undefined, {

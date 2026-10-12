@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { AlertCircle, CheckCircle2, Loader2, Pencil, Plus, Power, Upload } from "lucide-react";
 import { formatTime12Hour } from "@/lib/time";
 import { DEFAULT_TURF_WHATSAPP_NUMBER } from "@/lib/admin/turf-validation";
+import { AMENITY_OPTIONS, type AmenityKey } from "@/config/turf";
 
 interface Turf {
   id: string;
@@ -20,6 +21,11 @@ interface Turf {
   qr_image_url: string | null;
   whatsapp_number: string;
   contact_phone: string | null;
+  is_verified: boolean;
+  max_persons: number | null;
+  turf_count: number;
+  amenities: string[];
+  cover_image_url: string | null;
 }
 
 interface TurfFormState {
@@ -34,6 +40,10 @@ interface TurfFormState {
   payeeName: string;
   whatsappNumber: string;
   contactPhone: string;
+  isVerified: boolean;
+  maxPersons: string;
+  turfCount: number;
+  amenities: AmenityKey[];
 }
 
 const EMPTY_FORM: TurfFormState = {
@@ -48,12 +58,19 @@ const EMPTY_FORM: TurfFormState = {
   payeeName: "",
   whatsappNumber: DEFAULT_TURF_WHATSAPP_NUMBER,
   contactPhone: "",
+  isVerified: false,
+  maxPersons: "",
+  turfCount: 1,
+  amenities: [],
 };
 
 const QR_ALLOWED_TYPES = ["image/png", "image/jpeg", "image/webp"];
 const QR_MAX_BYTES = 2 * 1024 * 1024;
+const COVER_ALLOWED_TYPES = ["image/png", "image/jpeg", "image/webp"];
+const COVER_MAX_BYTES = 5 * 1024 * 1024;
 
 type QrUploadState = "idle" | "uploading" | "success" | "error";
+type CoverUploadState = "idle" | "uploading" | "success" | "error";
 
 export default function AdminTurfsPage() {
   const [turfs, setTurfs] = useState<Turf[]>([]);
@@ -68,6 +85,9 @@ export default function AdminTurfsPage() {
   const [editingQrImageUrl, setEditingQrImageUrl] = useState<string | null>(null);
   const [qrUploadState, setQrUploadState] = useState<QrUploadState>("idle");
   const [qrUploadError, setQrUploadError] = useState<string | null>(null);
+  const [editingCoverImageUrl, setEditingCoverImageUrl] = useState<string | null>(null);
+  const [coverUploadState, setCoverUploadState] = useState<CoverUploadState>("idle");
+  const [coverUploadError, setCoverUploadError] = useState<string | null>(null);
 
   async function loadTurfs() {
     setLoading(true);
@@ -110,6 +130,9 @@ export default function AdminTurfsPage() {
     setEditingQrImageUrl(null);
     setQrUploadState("idle");
     setQrUploadError(null);
+    setEditingCoverImageUrl(null);
+    setCoverUploadState("idle");
+    setCoverUploadError(null);
     setFormOpen(true);
   }
 
@@ -127,12 +150,61 @@ export default function AdminTurfsPage() {
       payeeName: turf.payee_name ?? "",
       whatsappNumber: turf.whatsapp_number,
       contactPhone: turf.contact_phone ?? "",
+      isVerified: turf.is_verified,
+      maxPersons: turf.max_persons === null ? "" : String(turf.max_persons),
+      turfCount: turf.turf_count,
+      amenities: turf.amenities.filter((a): a is AmenityKey =>
+        AMENITY_OPTIONS.some((o) => o.key === a)
+      ),
     });
     setFormError(null);
     setEditingQrImageUrl(turf.qr_image_url);
     setQrUploadState("idle");
     setQrUploadError(null);
+    setEditingCoverImageUrl(turf.cover_image_url);
+    setCoverUploadState("idle");
+    setCoverUploadError(null);
     setFormOpen(true);
+  }
+
+  function toggleAmenity(key: AmenityKey) {
+    setForm((f) => ({
+      ...f,
+      amenities: f.amenities.includes(key) ? f.amenities.filter((a) => a !== key) : [...f.amenities, key],
+    }));
+  }
+
+  async function handleCoverFileChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file || !editingId) return;
+
+    if (!COVER_ALLOWED_TYPES.includes(file.type)) {
+      setCoverUploadState("error");
+      setCoverUploadError("Cover image must be a PNG, JPEG, or WEBP file.");
+      return;
+    }
+    if (file.size > COVER_MAX_BYTES) {
+      setCoverUploadState("error");
+      setCoverUploadError("Cover image must be 5MB or smaller.");
+      return;
+    }
+
+    setCoverUploadState("uploading");
+    setCoverUploadError(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch(`/api/admin/turfs/${editingId}/cover`, { method: "POST", body: formData });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error ?? "Failed to upload cover image.");
+      setEditingCoverImageUrl(body.turf.cover_image_url);
+      setCoverUploadState("success");
+      await loadTurfs();
+    } catch (err) {
+      setCoverUploadState("error");
+      setCoverUploadError(err instanceof Error ? err.message : "Failed to upload cover image.");
+    }
   }
 
   async function handleQrFileChange(event: React.ChangeEvent<HTMLInputElement>) {
@@ -178,7 +250,10 @@ export default function AdminTurfsPage() {
       const res = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({
+          ...form,
+          maxPersons: form.maxPersons === "" ? null : Number(form.maxPersons),
+        }),
       });
       const body = await res.json();
       if (!res.ok) throw new Error(body.error ?? "Failed to save turf.");
@@ -352,6 +427,107 @@ export default function AdminTurfsPage() {
               />
             </label>
           </div>
+
+          <h3 className="text-sm font-semibold text-slate-700 pt-2 border-t border-slate-100">
+            Home page display details
+          </h3>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <label className="flex items-center gap-2 text-sm font-medium text-slate-700 sm:col-span-3">
+              <input
+                type="checkbox"
+                checked={form.isVerified}
+                onChange={(e) => setForm((f) => ({ ...f, isVerified: e.target.checked }))}
+                className="size-4 rounded border-slate-300 text-turf-600 focus:ring-turf-600"
+              />
+              Show &quot;Verified&quot; badge on the customer home page
+            </label>
+            <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
+              Max persons
+              <input
+                type="number"
+                min={1}
+                max={1000}
+                value={form.maxPersons}
+                onChange={(e) => setForm((f) => ({ ...f, maxPersons: e.target.value }))}
+                placeholder="Optional"
+                className="min-h-11 rounded-lg border border-slate-300 px-3 text-sm focus:border-turf-600"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
+              Number of turfs
+              <input
+                required
+                type="number"
+                min={1}
+                max={100}
+                value={form.turfCount}
+                onChange={(e) => setForm((f) => ({ ...f, turfCount: Number(e.target.value) }))}
+                className="min-h-11 rounded-lg border border-slate-300 px-3 text-sm focus:border-turf-600"
+              />
+            </label>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <p className="text-xs font-medium text-slate-600">Amenities</p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+              {AMENITY_OPTIONS.map((amenity) => (
+                <label key={amenity.key} className="flex items-center gap-2 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={form.amenities.includes(amenity.key)}
+                    onChange={() => toggleAmenity(amenity.key)}
+                    className="size-4 rounded border-slate-300 text-turf-600 focus:ring-turf-600"
+                  />
+                  {amenity.label}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {editingId ? (
+            <div className="flex flex-col gap-2">
+              <p className="text-xs font-medium text-slate-600">Cover image</p>
+              {editingCoverImageUrl && (
+                // eslint-disable-next-line @next/next/no-img-element -- external Supabase Storage URL, not a local asset
+                <img
+                  src={editingCoverImageUrl}
+                  alt="Current cover image"
+                  className="h-32 w-full max-w-xs rounded-lg border border-slate-200 bg-white object-cover"
+                />
+              )}
+              <label className="flex min-h-11 w-fit items-center gap-2 rounded-lg border border-slate-300 px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 cursor-pointer">
+                <Upload className="size-4" aria-hidden="true" />
+                {editingCoverImageUrl ? "Replace cover image" : "Upload cover image"}
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  onChange={handleCoverFileChange}
+                  className="hidden"
+                />
+              </label>
+              {coverUploadState === "uploading" && (
+                <p className="flex items-center gap-1.5 text-xs text-slate-500">
+                  <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+                  Uploading&hellip;
+                </p>
+              )}
+              {coverUploadState === "success" && (
+                <p className="flex items-center gap-1.5 text-xs text-turf-700">
+                  <CheckCircle2 className="size-3.5" aria-hidden="true" />
+                  Cover image updated.
+                </p>
+              )}
+              {coverUploadState === "error" && coverUploadError && (
+                <p className="flex items-center gap-1.5 text-xs text-red-600">
+                  <AlertCircle className="size-3.5" aria-hidden="true" />
+                  {coverUploadError}
+                </p>
+              )}
+              <p className="text-xs text-slate-400">PNG, JPEG, or WEBP, up to 5MB.</p>
+            </div>
+          ) : (
+            <p className="text-xs text-slate-400">Save the turf first, then upload a cover image while editing it.</p>
+          )}
 
           {editingId ? (
             <div className="flex flex-col gap-2">

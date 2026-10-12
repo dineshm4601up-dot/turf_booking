@@ -16,7 +16,6 @@ export function buildWhatsappClickToChatUrl(phone: string, message: string): str
 }
 
 export interface BookingWhatsAppMessageDetails {
-  shortReference: string;
   turfName: string;
   customerName: string;
   customerPhone: string;
@@ -31,12 +30,16 @@ export interface BookingWhatsAppMessageDetails {
   bookingStatusLabel: string;
 }
 
-/** Matches the exact template the turf owner sees -- this is what gets prefilled, never sent automatically. */
+/**
+ * Matches the exact template the turf owner sees -- this is what gets
+ * prefilled, never sent automatically. Identifies the booking by turf,
+ * customer name/mobile, and date/time rather than any reference code or
+ * internal id -- there is no booking reference in this app.
+ */
 export function buildBookingWhatsAppMessage(details: BookingWhatsAppMessageDetails): string {
   return [
     "New Turf Booking Request",
     "",
-    `Booking Reference: ${details.shortReference}`,
     `Turf Name: ${details.turfName}`,
     `Customer Name: ${details.customerName}`,
     `Customer Mobile: ${details.customerPhone}`,

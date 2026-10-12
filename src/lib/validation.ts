@@ -80,10 +80,6 @@ export function restrictToDigits(value: string, maxLength: number): string {
   return value.replace(/\D/g, "").slice(0, maxLength);
 }
 
-export function isValidShortReference(value: string): boolean {
-  return /^\d{5}$/.test(value);
-}
-
 /**
  * Looser than normalizeIndianMobileNumber: used for admin-entered contact
  * numbers (UPI phone, WhatsApp number, public contact number) that aren't

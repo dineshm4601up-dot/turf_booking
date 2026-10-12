@@ -21,7 +21,6 @@ export const dynamic = "force-dynamic";
 
 const RATE_LIMIT_MAX_REQUESTS = 5;
 const RATE_LIMIT_WINDOW_MS = 60_000;
-const MAX_SHORT_REFERENCE_RETRIES = 5;
 
 interface TurfRow {
   id: string;
@@ -48,23 +47,22 @@ interface BookingRow {
   status: string;
   payment_method: PaymentMethod | null;
   payment_status: PaymentStatus;
-  short_reference: string;
   created_at: string;
 }
 
 const BOOKING_SELECT_COLUMNS =
-  "id, turf_id, customer_name, booking_date, start_time, end_time, duration_minutes, total_price, status, payment_method, payment_status, short_reference, created_at";
+  "id, turf_id, customer_name, booking_date, start_time, end_time, duration_minutes, total_price, status, payment_method, payment_status, created_at";
 
 /**
  * Builds the UPI payment panel for a upi-method booking: VPA, payee name,
- * amount, the short 5-digit reference (not the uuid -- this is the one
- * customers and the turf owner actually read/communicate), and the
- * deep-link URI the QR code and "Pay with UPI" button both use. `turf`
- * carries that specific turf's own UPI details (per-turf config, not a
- * global setting). Returns null for a cash booking, or for a upi booking
- * if the turf somehow isn't configured for UPI (shouldn't happen -- the
- * booking API refuses to create a upi booking when it isn't -- but this
- * keeps the response honest rather than fabricating a panel either way).
+ * amount, a descriptive payment note (turf + date/time -- not the booking's
+ * internal uuid, which is never exposed to customers), and the deep-link
+ * URI the QR code and "Pay with UPI" button both use. `turf` carries that
+ * specific turf's own UPI details (per-turf config, not a global setting).
+ * Returns null for a cash booking, or for a upi booking if the turf somehow
+ * isn't configured for UPI (shouldn't happen -- the booking API refuses to
+ * create a upi booking when it isn't -- but this keeps the response honest
+ * rather than fabricating a panel either way).
  */
 function buildUpiPanel(booking: BookingRow, turf: TurfRow) {
   if (booking.payment_method !== "upi") return null;
@@ -72,17 +70,18 @@ function buildUpiPanel(booking: BookingRow, turf: TurfRow) {
   if (!upiConfig) return null;
 
   const amount = Number(booking.total_price);
+  const note = `${turf.name} ${booking.booking_date} ${booking.start_time}`;
   return {
     payeeVpa: upiConfig.payeeVpa,
     payeeName: upiConfig.payeeName,
     payeePhone: upiConfig.payeePhone,
     amount,
-    reference: booking.short_reference,
+    note,
     uri: buildUpiPaymentUri({
       payeeVpa: upiConfig.payeeVpa,
       payeeName: upiConfig.payeeName,
       amount,
-      transactionNote: booking.short_reference,
+      transactionNote: note,
     }),
   };
 }
@@ -90,7 +89,6 @@ function buildUpiPanel(booking: BookingRow, turf: TurfRow) {
 function toBookingResponse(booking: BookingRow, turf: TurfRow) {
   return {
     id: booking.id,
-    reference: booking.short_reference,
     turfId: booking.turf_id,
     turfName: turf.name,
     turfWhatsappNumber: turf.whatsapp_number,
@@ -176,10 +174,6 @@ export async function handleBookingRequest(request: Request, deps: BookingDeps =
   }
   const paymentMethod = input.paymentMethod;
 
-  const nameResult = validateCustomerName(input.customerName);
-  if (!nameResult.ok) {
-    return NextResponse.json({ error: nameResult.error }, { status: 400 });
-  }
   const phoneResult = validateCustomerPhone(input.customerPhone);
   if (!phoneResult.ok) {
     return NextResponse.json({ error: phoneResult.error }, { status: 400 });
@@ -225,6 +219,66 @@ export async function handleBookingRequest(request: Request, deps: BookingDeps =
       if (existingTurf) {
         return NextResponse.json(toBookingResponse(existing, existingTurf), { status: 200 });
       }
+    }
+  }
+
+  // Customer Master resolution: a phone number maps to exactly one
+  // canonical customer record. For a number that already has one, the
+  // saved name is used -- never a name the browser submits -- so a
+  // customer can't overwrite their own saved name just by entering the
+  // same phone number again (name changes are an admin-only action, see
+  // PATCH /api/admin/customers/[id]). For a brand-new number, the
+  // submitted name is validated and becomes that customer's canonical name.
+  const { data: existingCustomer, error: customerLookupError } = await admin
+    .from("customers")
+    .select("id, name")
+    .eq("phone", phoneResult.value)
+    .maybeSingle<{ id: string; name: string }>();
+
+  if (customerLookupError) {
+    console.error("bookings: customer lookup failed", customerLookupError);
+    return NextResponse.json({ error: "Something went wrong. Please try again." }, { status: 500 });
+  }
+
+  let customerId: string;
+  let canonicalCustomerName: string;
+
+  if (existingCustomer) {
+    customerId = existingCustomer.id;
+    canonicalCustomerName = existingCustomer.name;
+  } else {
+    const nameResult = validateCustomerName(input.customerName);
+    if (!nameResult.ok) {
+      return NextResponse.json({ error: nameResult.error }, { status: 400 });
+    }
+
+    const insertResult = await admin
+      .from("customers")
+      .insert({ phone: phoneResult.value, name: nameResult.value })
+      .select("id, name")
+      .single<{ id: string; name: string }>();
+
+    if (insertResult.error && isUniqueViolationOn(insertResult.error, "customers_phone")) {
+      // Lost a race to a concurrent first-time booking for the same
+      // number: the other request's insert already won, so use its
+      // canonical record rather than erroring or creating a duplicate.
+      const { data: winner, error: winnerError } = await admin
+        .from("customers")
+        .select("id, name")
+        .eq("phone", phoneResult.value)
+        .maybeSingle<{ id: string; name: string }>();
+      if (winnerError || !winner) {
+        console.error("bookings: failed to resolve customer after insert race", winnerError);
+        return NextResponse.json({ error: "Something went wrong. Please try again." }, { status: 500 });
+      }
+      customerId = winner.id;
+      canonicalCustomerName = winner.name;
+    } else if (insertResult.error || !insertResult.data) {
+      console.error("bookings: failed to create customer", insertResult.error);
+      return NextResponse.json({ error: "Something went wrong. Please try again." }, { status: 500 });
+    } else {
+      customerId = insertResult.data.id;
+      canonicalCustomerName = insertResult.data.name;
     }
   }
 
@@ -324,7 +378,8 @@ export async function handleBookingRequest(request: Request, deps: BookingDeps =
 
   const insertPayload = {
     turf_id: turfId,
-    customer_name: nameResult.value,
+    customer_id: customerId,
+    customer_name: canonicalCustomerName,
     customer_phone: phoneResult.value,
     booking_date: bookingDate,
     start_time: startTime,
@@ -339,37 +394,12 @@ export async function handleBookingRequest(request: Request, deps: BookingDeps =
 
   // The database's exclusion constraint (Phase 2) is the final, authoritative
   // guard against double-booking under concurrent requests -- everything
-  // above is a best-effort pre-check, not a substitute for it. A collision
-  // on the short_reference's unique constraint is retried (not fatal): the
-  // column's DEFAULT generates a fresh random candidate on every fresh
-  // INSERT attempt, so retrying is enough to resolve it under all but
-  // near-total exhaustion of the ~90,000-value space.
-  let inserted: BookingRow | null = null;
-  let insertError: PostgrestError | null = null;
-
-  for (let attempt = 0; attempt < MAX_SHORT_REFERENCE_RETRIES; attempt += 1) {
-    const result = await admin.from("bookings").insert(insertPayload).select(BOOKING_SELECT_COLUMNS).single<BookingRow>();
-    if (!result.error) {
-      inserted = result.data;
-      insertError = null;
-      break;
-    }
-    insertError = result.error;
-    if (isUniqueViolationOn(result.error, "short_reference")) {
-      continue;
-    }
-    break;
-  }
+  // above is a best-effort pre-check, not a substitute for it.
+  const result = await admin.from("bookings").insert(insertPayload).select(BOOKING_SELECT_COLUMNS).single<BookingRow>();
+  const inserted = result.error ? null : result.data;
+  const insertError = result.error;
 
   if (!inserted) {
-    const message = insertError?.message ?? "";
-    if (message.includes("SHORT_REFERENCE_EXHAUSTED")) {
-      console.error("bookings: short_reference pool exhausted");
-      return NextResponse.json(
-        { error: "No booking references are available right now. Please contact the turf directly." },
-        { status: 503 }
-      );
-    }
     if (insertError?.code === "23P01") {
       return NextResponse.json(
         { error: "Sorry, this slot was just booked. Please select another time." },
@@ -385,12 +415,6 @@ export async function handleBookingRequest(request: Request, deps: BookingDeps =
       if (raceWinner) {
         return NextResponse.json(toBookingResponse(raceWinner, turf), { status: 200 });
       }
-    }
-    if (insertError && isUniqueViolationOn(insertError, "short_reference")) {
-      return NextResponse.json(
-        { error: "Could not generate a unique booking reference. Please try again." },
-        { status: 500 }
-      );
     }
     console.error("bookings: insert failed", insertError);
     return NextResponse.json({ error: "Something went wrong. Please try again." }, { status: 500 });

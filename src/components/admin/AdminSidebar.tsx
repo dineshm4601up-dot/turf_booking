@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Ban, CalendarCheck, LayoutDashboard, LogOut, Menu, MapPinned, Tag, X } from "lucide-react";
+import { Ban, CalendarCheck, LayoutDashboard, LogOut, Menu, MapPinned, Tag, Users, X } from "lucide-react";
 import { signOutAction } from "@/app/admin/actions";
 
 const NAV_ITEMS = [
@@ -11,6 +11,7 @@ const NAV_ITEMS = [
   { href: "/admin/turfs", label: "Turfs", icon: MapPinned },
   { href: "/admin/pricing", label: "Pricing", icon: Tag },
   { href: "/admin/bookings", label: "Bookings", icon: CalendarCheck },
+  { href: "/admin/customers", label: "Customers", icon: Users },
   { href: "/admin/blocks", label: "Blocked Slots", icon: Ban },
 ];
 

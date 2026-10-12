@@ -27,7 +27,6 @@ describe("buildWhatsappClickToChatUrl", () => {
 describe("buildBookingWhatsAppMessage", () => {
   it("matches the exact required template", () => {
     const message = buildBookingWhatsAppMessage({
-      shortReference: "48217",
       turfName: "GreenTurf Arena",
       customerName: "Priya Sharma",
       customerPhone: "9876543210",
@@ -46,7 +45,6 @@ describe("buildBookingWhatsAppMessage", () => {
       [
         "New Turf Booking Request",
         "",
-        "Booking Reference: 48217",
         "Turf Name: GreenTurf Arena",
         "Customer Name: Priya Sharma",
         "Customer Mobile: 9876543210",

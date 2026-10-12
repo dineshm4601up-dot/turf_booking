@@ -7,7 +7,7 @@ export interface UpiPanelData {
   payeeName: string;
   payeePhone: string | null;
   amount: number;
-  reference: string;
+  note: string;
   uri: string;
 }
 
@@ -54,9 +54,8 @@ export function UpiPaymentPanel({ upi }: { upi: UpiPanelData }) {
       </div>
 
       <p className="mt-3 text-xs text-amber-800">
-        Keep booking reference <span className="font-mono break-all">{upi.reference}</span> handy. Opening a UPI
-        app or returning to this page does not confirm payment by itself &mdash; the turf will verify your payment
-        and mark it Paid.
+        Payment note: <span className="font-mono break-all">{upi.note}</span>. Opening a UPI app or returning to
+        this page does not confirm payment by itself &mdash; the turf will verify your payment and mark it Paid.
       </p>
     </div>
   );
