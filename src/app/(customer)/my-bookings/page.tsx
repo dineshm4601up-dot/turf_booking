@@ -10,6 +10,7 @@ import { formatDateLong, formatDurationLabel, formatTime12Hour } from "@/lib/tim
 import { getCustomerStatusLabel, type BookingStatus } from "@/lib/booking-status";
 import { restrictToDigits, validateCustomerPhone } from "@/lib/validation";
 import { UpiPaymentPanel, type UpiPanelData } from "@/components/booking/UpiPaymentPanel";
+import { SportsLineArtBackground } from "@/components/decor/SportsLineArtBackground";
 
 interface LookupBooking {
   turfName: string;
@@ -108,7 +109,9 @@ function MyBookingsContent() {
   }, []);
 
   return (
-    <main className="mx-auto max-w-2xl px-4 py-5 sm:px-6 sm:py-8 flex flex-col gap-6">
+    <>
+      <SportsLineArtBackground />
+      <main className="mx-auto max-w-2xl px-4 py-5 sm:px-6 sm:py-8 flex flex-col gap-6">
       <div className="flex items-center gap-2">
         <Link
           href="/"
@@ -205,7 +208,8 @@ function MyBookingsContent() {
           ))}
         </div>
       )}
-    </main>
+      </main>
+    </>
   );
 }
 

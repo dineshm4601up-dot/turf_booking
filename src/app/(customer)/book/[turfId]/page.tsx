@@ -9,6 +9,7 @@ import { DateSelector } from "@/components/booking/DateSelector";
 import { TimeSlotPicker } from "@/components/booking/TimeSlotPicker";
 import { DurationPicker, type DurationOption } from "@/components/booking/DurationPicker";
 import { BookingSummary } from "@/components/booking/BookingSummary";
+import { SportsLineArtBackground } from "@/components/decor/SportsLineArtBackground";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
 import { mapTurfRow, TURF_VIEW_SELECT_COLUMNS, type TurfView, type TurfViewRow } from "@/lib/turf-query";
 import { isValidUuid } from "@/lib/validation";
@@ -92,40 +93,49 @@ export default function BookSlotPage({ params }: { params: Promise<{ turfId: str
 
   if (turfState.status === "loading") {
     return (
-      <main className="mx-auto max-w-2xl px-4 py-5 sm:px-6 sm:py-8 flex flex-col gap-4">
-        <div className="flex items-center gap-2 text-sm text-slate-500 py-10 justify-center" role="status">
-          <Loader2 className="size-5 animate-spin" aria-hidden="true" />
-          Loading turf details&hellip;
-        </div>
-      </main>
+      <>
+        <SportsLineArtBackground />
+        <main className="mx-auto max-w-2xl px-4 py-5 sm:px-6 sm:py-8 flex flex-col gap-4">
+          <div className="flex items-center gap-2 text-sm text-slate-500 py-10 justify-center" role="status">
+            <Loader2 className="size-5 animate-spin" aria-hidden="true" />
+            Loading turf details&hellip;
+          </div>
+        </main>
+      </>
     );
   }
 
   if (turfState.status === "error") {
     return (
-      <main className="mx-auto max-w-2xl px-4 py-5 sm:px-6 sm:py-8 flex flex-col gap-4">
-        <div
-          className="flex items-center gap-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-4 py-6 justify-center text-center"
-          role="alert"
-        >
-          <AlertCircle className="size-5 shrink-0" aria-hidden="true" />
-          {turfState.message}
-        </div>
-      </main>
+      <>
+        <SportsLineArtBackground />
+        <main className="mx-auto max-w-2xl px-4 py-5 sm:px-6 sm:py-8 flex flex-col gap-4">
+          <div
+            className="flex items-center gap-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-4 py-6 justify-center text-center"
+            role="alert"
+          >
+            <AlertCircle className="size-5 shrink-0" aria-hidden="true" />
+            {turfState.message}
+          </div>
+        </main>
+      </>
     );
   }
 
   if (turfState.status === "not_found") {
     return (
-      <main className="mx-auto max-w-2xl px-4 py-5 sm:px-6 sm:py-8 flex flex-col gap-4">
-        <div className="text-center text-sm text-slate-500 py-10 flex flex-col items-center gap-3">
-          <p>This turf isn&apos;t available for booking right now.</p>
-          <Link href="/" className="flex min-h-11 items-center gap-1.5 rounded-lg bg-turf-600 px-4 text-sm font-semibold text-white hover:bg-turf-700">
-            <ArrowLeft className="size-4" aria-hidden="true" />
-            Back to home
-          </Link>
-        </div>
-      </main>
+      <>
+        <SportsLineArtBackground />
+        <main className="mx-auto max-w-2xl px-4 py-5 sm:px-6 sm:py-8 flex flex-col gap-4">
+          <div className="text-center text-sm text-slate-500 py-10 flex flex-col items-center gap-3">
+            <p>This turf isn&apos;t available for booking right now.</p>
+            <Link href="/" className="flex min-h-11 items-center gap-1.5 rounded-lg bg-turf-600 px-4 text-sm font-semibold text-white hover:bg-turf-700">
+              <ArrowLeft className="size-4" aria-hidden="true" />
+              Back to home
+            </Link>
+          </div>
+        </main>
+      </>
     );
   }
 
@@ -139,7 +149,9 @@ export default function BookSlotPage({ params }: { params: Promise<{ turfId: str
   ];
 
   return (
-    <main className="mx-auto max-w-2xl px-4 py-5 sm:px-6 sm:py-8 flex flex-col gap-4">
+    <>
+      <SportsLineArtBackground />
+      <main className="mx-auto max-w-2xl px-4 py-5 sm:px-6 sm:py-8 flex flex-col gap-4">
       <TurfInfoCard
         name={turf.name}
         location={turf.location}
@@ -197,6 +209,7 @@ export default function BookSlotPage({ params }: { params: Promise<{ turfId: str
           onBookingComplete={handleBookingComplete}
         />
       )}
-    </main>
+      </main>
+    </>
   );
 }

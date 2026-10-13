@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="420" height="420" viewBox="0 0 420 420">
+  <g fill="none" stroke="#16a352" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <!-- cricket ball, top-left -->
+    <g transform="translate(30,30) scale(0.5) rotate(-10)">
+      <circle cx="50" cy="50" r="36" />
+      <path d="M22 28 Q50 50 22 72" />
+      <path d="M78 28 Q50 50 78 72" />
+    </g>
+    <!-- football, top-right -->
+    <g transform="translate(290,20) scale(0.55) rotate(12)">
+      <circle cx="50" cy="50" r="36" />
+      <polygon points="50,32 62,41 57,55 43,55 38,41" />
+      <path d="M50 32 L50 16" />
+      <path d="M62 41 L76 30" />
+      <path d="M57 55 L66 72" />
+      <path d="M43 55 L34 72" />
+      <path d="M38 41 L24 30" />
+    </g>
+    <!-- field markings, upper middle -->
+    <g transform="translate(130,100) scale(0.9) rotate(-3)">
+      <rect x="6" y="6" width="148" height="88" rx="6" />
+      <line x1="80" y1="6" x2="80" y2="94" />
+      <circle cx="80" cy="50" r="17" />
+    </g>
+    <!-- cricket stumps, left -->
+    <g transform="translate(18,250) scale(0.8)">
+      <line x1="28" y1="14" x2="28" y2="64" />
+      <line x1="50" y1="8" x2="50" y2="64" />
+      <line x1="72" y1="14" x2="72" y2="64" />
+      <path d="M25 11 L53 6" />
+      <path d="M47 6 L75 11" />
+    </g>
+    <!-- cricket helmet, lower middle -->
+    <g transform="translate(220,265) scale(0.55) rotate(-8)">
+      <path d="M24 68 Q22 22 50 22 Q78 22 76 68" />
+      <path d="M30 68 L30 84 Q50 92 70 84 L70 68" />
+      <line x1="39" y1="68" x2="39" y2="83" />
+      <line x1="50" y1="70" x2="50" y2="86" />
+      <line x1="61" y1="68" x2="61" y2="83" />
+    </g>
+    <!-- cricket bat, right -->
+    <g transform="translate(330,140) scale(0.9) rotate(18)">
+      <path d="M30 6 C40 6 44 16 42 32 L36 70 L24 70 L18 32 C16 16 20 6 30 6 Z" />
+      <path d="M26 70 L24 104" />
+      <path d="M36 70 L34 104" />
+      <path d="M22 104 Q30 110 38 104" />
+    </g>
+    <!-- second cricket ball, bottom-right -->
+    <g transform="translate(300,330) scale(0.4) rotate(20)">
+      <circle cx="50" cy="50" r="36" />
+      <path d="M22 28 Q50 50 22 72" />
+      <path d="M78 28 Q50 50 78 72" />
+    </g>
+    <!-- second football, bottom-left -->
+    <g transform="translate(60,350) scale(0.35) rotate(-15)">
+      <circle cx="50" cy="50" r="36" />
+      <polygon points="50,32 62,41 57,55 43,55 38,41" />
+      <path d="M50 32 L50 16" />
+      <path d="M62 41 L76 30" />
+      <path d="M57 55 L66 72" />
+      <path d="M43 55 L34 72" />
+      <path d="M38 41 L24 30" />
+    </g>
+  </g>
+</svg>

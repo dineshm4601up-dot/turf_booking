@@ -7,6 +7,7 @@ import { TurfStats } from "@/components/home/TurfStats";
 import { TurfOpeningHours } from "@/components/home/TurfOpeningHours";
 import { TurfAmenities } from "@/components/home/TurfAmenities";
 import { BookNowBar, BookNowInline } from "@/components/home/BookNowBar";
+import { SportsLineArtBackground } from "@/components/decor/SportsLineArtBackground";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
 import { mapTurfRow, TURF_VIEW_SELECT_COLUMNS, type TurfView, type TurfViewRow } from "@/lib/turf-query";
 
@@ -59,36 +60,45 @@ export default function Home() {
 
   if (turfState.status === "loading") {
     return (
-      <main className="mx-auto max-w-2xl px-4 py-5 sm:px-6 sm:py-8 flex flex-col gap-4">
-        <div className="flex items-center gap-2 text-sm text-slate-500 py-10 justify-center" role="status">
-          <Loader2 className="size-5 animate-spin" aria-hidden="true" />
-          Loading turf details&hellip;
-        </div>
-      </main>
+      <>
+        <SportsLineArtBackground />
+        <main className="mx-auto max-w-2xl px-4 py-5 sm:px-6 sm:py-8 flex flex-col gap-4">
+          <div className="flex items-center gap-2 text-sm text-slate-500 py-10 justify-center" role="status">
+            <Loader2 className="size-5 animate-spin" aria-hidden="true" />
+            Loading turf details&hellip;
+          </div>
+        </main>
+      </>
     );
   }
 
   if (turfState.status === "error") {
     return (
-      <main className="mx-auto max-w-2xl px-4 py-5 sm:px-6 sm:py-8 flex flex-col gap-4">
-        <div
-          className="flex items-center gap-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-4 py-6 justify-center text-center"
-          role="alert"
-        >
-          <AlertCircle className="size-5 shrink-0" aria-hidden="true" />
-          {turfState.message}
-        </div>
-      </main>
+      <>
+        <SportsLineArtBackground />
+        <main className="mx-auto max-w-2xl px-4 py-5 sm:px-6 sm:py-8 flex flex-col gap-4">
+          <div
+            className="flex items-center gap-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-4 py-6 justify-center text-center"
+            role="alert"
+          >
+            <AlertCircle className="size-5 shrink-0" aria-hidden="true" />
+            {turfState.message}
+          </div>
+        </main>
+      </>
     );
   }
 
   if (turfState.status === "empty") {
     return (
-      <main className="mx-auto max-w-2xl px-4 py-5 sm:px-6 sm:py-8 flex flex-col gap-4">
-        <div className="text-center text-sm text-slate-500 py-10">
-          No turf is currently open for booking. Please check back later.
-        </div>
-      </main>
+      <>
+        <SportsLineArtBackground />
+        <main className="mx-auto max-w-2xl px-4 py-5 sm:px-6 sm:py-8 flex flex-col gap-4">
+          <div className="text-center text-sm text-slate-500 py-10">
+            No turf is currently open for booking. Please check back later.
+          </div>
+        </main>
+      </>
     );
   }
 
@@ -97,6 +107,7 @@ export default function Home() {
 
   return (
     <>
+      <SportsLineArtBackground />
       <main className="mx-auto max-w-2xl px-4 py-5 sm:px-6 sm:py-8 flex flex-col gap-4 pb-20 sm:pb-8">
         <TurfInfoCard
           name={turf.name}
