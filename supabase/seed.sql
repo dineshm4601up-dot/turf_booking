@@ -11,7 +11,7 @@ insert into public.turfs (
 )
 values (
   '11111111-1111-4111-8111-111111111111',
-  'GreenTurf Arena',
+  'Turf Booking',
   'Sector 21, Gachibowli, Hyderabad',
   'Football (5-a-side), Cricket Box, Pickleball',
   '06:00', '23:00', 30, true

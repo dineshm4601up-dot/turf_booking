@@ -1,15 +1,17 @@
 import { NextResponse } from "next/server";
 import { type AdminAuthDeps, adminAuthErrorResponse, checkAdminAuth, defaultAdminAuthDeps } from "@/lib/admin-auth";
 import { validateTurfDisplayInput, validateTurfInput, validateTurfPaymentInput } from "@/lib/admin/turf-validation";
+import { findAvailableSlug } from "@/lib/admin/turf-slug";
 import { isValidUuid } from "@/lib/validation";
 
 export const dynamic = "force-dynamic";
 
 const TURF_SELECT_COLUMNS =
-  "id, name, location, sport_type, opening_time, closing_time, slot_interval_minutes, is_active, upi_vpa, upi_phone, payee_name, qr_image_url, whatsapp_number, contact_phone, is_verified, max_persons, turf_count, amenities, cover_image_url, created_at";
+  "id, slug, name, location, sport_type, opening_time, closing_time, slot_interval_minutes, is_active, upi_vpa, upi_phone, payee_name, qr_image_url, whatsapp_number, contact_phone, is_verified, max_persons, turf_count, amenities, cover_image_url, created_at";
 
 interface ExistingTurfRow {
   id: string;
+  slug: string | null;
   name: string;
   location: string;
   sport_type: string;
@@ -52,7 +54,7 @@ export async function handleTurfPatch(request: Request, turfId: string, deps: Ad
   const { data: existing, error: fetchError } = await admin
     .from("turfs")
     .select(
-      "id, name, location, sport_type, opening_time, closing_time, slot_interval_minutes, is_active, upi_vpa, upi_phone, payee_name, whatsapp_number, contact_phone, is_verified, max_persons, turf_count, amenities"
+      "id, slug, name, location, sport_type, opening_time, closing_time, slot_interval_minutes, is_active, upi_vpa, upi_phone, payee_name, whatsapp_number, contact_phone, is_verified, max_persons, turf_count, amenities"
     )
     .eq("id", turfId)
     .maybeSingle<ExistingTurfRow>();
@@ -104,9 +106,18 @@ export async function handleTurfPatch(request: Request, turfId: string, deps: Ad
 
   const isActive = typeof input.isActive === "boolean" ? input.isActive : existing.is_active;
 
+  // The slug is never regenerated on an edit, even when the name changes:
+  // preserving it is how an already-shared /book/<slug> link is kept from
+  // silently breaking (the alternative the brief allows -- a redirect --
+  // isn't needed once the slug simply never changes). The only case this
+  // computes a fresh one is defensive: a turf somehow missing a slug
+  // (shouldn't happen once the backfill migration has run, but a save
+  // should never fail because of it).
+  const slug = existing.slug ?? (await findAvailableSlug(admin, validated.value.name, turfId));
+
   const { data: updated, error: updateError } = await admin
     .from("turfs")
-    .update({ ...validated.value, ...paymentValidated.value, ...displayValidated.value, is_active: isActive })
+    .update({ ...validated.value, ...paymentValidated.value, ...displayValidated.value, slug, is_active: isActive })
     .eq("id", turfId)
     .select(TURF_SELECT_COLUMNS)
     .single();

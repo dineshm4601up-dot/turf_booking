@@ -22,12 +22,20 @@ type TurfState =
 
 /**
  * The turf a customer books is whichever one Home's "Book Now" linked to
- * (/book/[turfId]) -- loaded here by id, independently of Home's own "first
- * active turf" query, so the selected turf is never lost or swapped for a
- * different one in transit.
+ * (/book/<turf-name-slug>) -- loaded here by that slug, independently of
+ * Home's own "first active turf" query, so the selected turf is never lost
+ * or swapped for a different one in transit.
+ *
+ * Also accepts a raw uuid in this same [slug] segment (e.g. an old
+ * /book/<uuid> link shared before slugs existed): a uuid-shaped value is
+ * looked up by `id`, anything else by `slug`. This is the "handle
+ * compatibly" option for not breaking an already-shared uuid link, chosen
+ * over an HTTP redirect since it needs no extra round trip and no routing
+ * complexity -- one dynamic segment, one query, branching only on which
+ * column to filter by.
  */
-export default function BookSlotPage({ params }: { params: Promise<{ turfId: string }> }) {
-  const { turfId } = use(params);
+export default function BookSlotPage({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = use(params);
   const [turfState, setTurfState] = useState<TurfState>({ status: "loading" });
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [selectedStartTime, setSelectedStartTime] = useState<string | null>(null);
@@ -37,16 +45,13 @@ export default function BookSlotPage({ params }: { params: Promise<{ turfId: str
     let cancelled = false;
 
     async function loadTurf() {
-      if (!isValidUuid(turfId)) {
-        setTurfState({ status: "not_found" });
-        return;
-      }
       try {
         const supabase = getSupabaseBrowserClient();
+        const lookupColumn = isValidUuid(slug) ? "id" : "slug";
         const { data, error } = await supabase
           .from("turfs")
           .select(TURF_VIEW_SELECT_COLUMNS)
-          .eq("id", turfId)
+          .eq(lookupColumn, slug)
           .eq("is_active", true)
           .maybeSingle<TurfViewRow>();
 
@@ -72,7 +77,7 @@ export default function BookSlotPage({ params }: { params: Promise<{ turfId: str
     return () => {
       cancelled = true;
     };
-  }, [turfId]);
+  }, [slug]);
 
   function handleSelectDate(date: string) {
     setSelectedDate(date);
@@ -128,7 +133,7 @@ export default function BookSlotPage({ params }: { params: Promise<{ turfId: str
         <SportsLineArtBackground />
         <main className="mx-auto max-w-2xl px-4 py-5 sm:px-6 sm:py-8 flex flex-col gap-4">
           <div className="text-center text-sm text-slate-500 py-10 flex flex-col items-center gap-3">
-            <p>This turf isn&apos;t available for booking right now.</p>
+            <p>We couldn&apos;t find that turf. The link may be incorrect, or the turf may no longer be available.</p>
             <Link href="/" className="flex min-h-11 items-center gap-1.5 rounded-lg bg-turf-600 px-4 text-sm font-semibold text-white hover:bg-turf-700">
               <ArrowLeft className="size-4" aria-hidden="true" />
               Back to home

@@ -6,11 +6,12 @@ import {
   validateTurfInput,
   validateTurfPaymentInput,
 } from "@/lib/admin/turf-validation";
+import { findAvailableSlug, isUniqueViolationOnSlug } from "@/lib/admin/turf-slug";
 
 export const dynamic = "force-dynamic";
 
 const TURF_SELECT_COLUMNS =
-  "id, name, location, sport_type, opening_time, closing_time, slot_interval_minutes, is_active, upi_vpa, upi_phone, payee_name, qr_image_url, whatsapp_number, contact_phone, is_verified, max_persons, turf_count, amenities, cover_image_url, created_at";
+  "id, slug, name, location, sport_type, opening_time, closing_time, slot_interval_minutes, is_active, upi_vpa, upi_phone, payee_name, qr_image_url, whatsapp_number, contact_phone, is_verified, max_persons, turf_count, amenities, cover_image_url, created_at";
 
 export async function handleTurfsGet(deps: AdminAuthDeps = defaultAdminAuthDeps) {
   const authResult = await checkAdminAuth(deps);
@@ -64,18 +65,33 @@ export async function handleTurfsPost(request: Request, deps: AdminAuthDeps = de
   }
 
   const admin = deps.getAdminClient();
-  const { data, error } = await admin
+
+  // Slugs are generated once, at creation, from the turf's name -- see
+  // findAvailableSlug for why both an in-app uniqueness check and a
+  // 23505-on-insert retry are needed (the check alone can't rule out two
+  // concurrent requests for the same new name racing each other).
+  const slug = await findAvailableSlug(admin, validated.value.name);
+  let result = await admin
     .from("turfs")
-    .insert({ ...validated.value, ...paymentValidated.value, ...displayValidated.value, is_active: true })
+    .insert({ ...validated.value, ...paymentValidated.value, ...displayValidated.value, slug, is_active: true })
     .select(TURF_SELECT_COLUMNS)
     .single();
 
-  if (error) {
-    console.error("admin/turfs POST failed", error);
+  if (result.error && isUniqueViolationOnSlug(result.error)) {
+    const retrySlug = await findAvailableSlug(admin, validated.value.name);
+    result = await admin
+      .from("turfs")
+      .insert({ ...validated.value, ...paymentValidated.value, ...displayValidated.value, slug: retrySlug, is_active: true })
+      .select(TURF_SELECT_COLUMNS)
+      .single();
+  }
+
+  if (result.error) {
+    console.error("admin/turfs POST failed", result.error);
     return NextResponse.json({ error: "Something went wrong. Please try again." }, { status: 500 });
   }
 
-  return NextResponse.json({ turf: data }, { status: 201 });
+  return NextResponse.json({ turf: result.data }, { status: 201 });
 }
 
 export async function GET() {

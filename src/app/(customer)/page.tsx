@@ -103,7 +103,7 @@ export default function Home() {
   }
 
   const { turf } = turfState;
-  const bookHref = `/book/${turf.id}`;
+  const bookHref = `/book/${turf.slug}`;
 
   return (
     <>

@@ -7,10 +7,11 @@
  * both without duplicating the mapping logic.
  */
 export const TURF_VIEW_SELECT_COLUMNS =
-  "id, name, location, sport_type, opening_time, closing_time, contact_phone, upi_vpa, payee_name, is_verified, max_persons, turf_count, amenities, cover_image_url";
+  "id, slug, name, location, sport_type, opening_time, closing_time, contact_phone, upi_vpa, payee_name, is_verified, max_persons, turf_count, amenities, cover_image_url";
 
 export interface TurfViewRow {
   id: string;
+  slug: string;
   name: string;
   location: string;
   sport_type: string;
@@ -28,6 +29,7 @@ export interface TurfViewRow {
 
 export interface TurfView {
   id: string;
+  slug: string;
   name: string;
   location: string;
   sportType: string;
@@ -45,6 +47,7 @@ export interface TurfView {
 export function mapTurfRow(row: TurfViewRow): TurfView {
   return {
     id: row.id,
+    slug: row.slug,
     name: row.name,
     location: row.location,
     sportType: row.sport_type,

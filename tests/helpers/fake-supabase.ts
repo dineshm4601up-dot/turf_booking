@@ -89,6 +89,10 @@ export function createFakeSupabaseClient(
         filters.push((row) => row[column] === value);
         return builder;
       },
+      neq(column: string, value: unknown) {
+        filters.push((row) => row[column] !== value);
+        return builder;
+      },
       in(column: string, values: unknown[]) {
         filters.push((row) => values.includes(row[column]));
         return builder;

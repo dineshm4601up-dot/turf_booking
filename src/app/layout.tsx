@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "GreenTurf Arena | Book Your Slot",
+  title: "Turf Booking | Book Your Slot",
   description:
     "Book your football, cricket or pickleball turf slot online in minutes.",
 };

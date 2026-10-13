@@ -5,7 +5,7 @@ describe("buildUpiPaymentUri", () => {
   it("builds a correctly-structured upi:// deep link", () => {
     const uri = buildUpiPaymentUri({
       payeeVpa: "turf@upi",
-      payeeName: "GreenTurf Arena",
+      payeeName: "Turf Booking",
       amount: 800,
       transactionNote: "ref-123",
     });

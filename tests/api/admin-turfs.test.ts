@@ -429,3 +429,112 @@ describe("PATCH /api/admin/turfs/:id - home page display fields", () => {
     expect(body.turf.amenities).toEqual(["restroom"]);
   });
 });
+
+describe("POST /api/admin/turfs - slug generation", () => {
+  it("generates a slug from the turf name", async () => {
+    const tables = buildTables();
+    const res = await handleTurfsPost(
+      postRequest({
+        name: "The 4th Zone Turf",
+        location: "Test Location",
+        sportType: "Cricket",
+        openingTime: "06:00",
+        closingTime: "22:00",
+        slotIntervalMinutes: 30,
+      }),
+      makeAdminDeps(tables, "admin")
+    );
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.turf.slug).toBe("the-4th-zone-turf");
+  });
+
+  it("gives a second turf with the same name a distinct, numbered slug", async () => {
+    const tables = buildTables();
+    tables.turfs!.push({
+      id: "99999999-9999-4999-8999-999999999999",
+      name: "Green Turf",
+      slug: "green-turf",
+      location: "Elsewhere",
+      sport_type: "Cricket",
+      opening_time: "06:00",
+      closing_time: "22:00",
+      slot_interval_minutes: 30,
+      is_active: true,
+      whatsapp_number: "9344689836",
+      created_at: new Date().toISOString(),
+    });
+
+    const res = await handleTurfsPost(
+      postRequest({
+        name: "Green Turf",
+        location: "Test Location",
+        sportType: "Cricket",
+        openingTime: "06:00",
+        closingTime: "22:00",
+        slotIntervalMinutes: 30,
+      }),
+      makeAdminDeps(tables, "admin")
+    );
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.turf.slug).toBe("green-turf-2");
+  });
+
+  it("never creates two turfs with the same slug", async () => {
+    const tables = buildTables();
+    tables.turfs!.push(
+      { id: "aaaaaaaa-1111-4111-8111-111111111111", name: "Green Turf", slug: "green-turf", is_active: true, whatsapp_number: "9344689836", created_at: new Date().toISOString() },
+      { id: "bbbbbbbb-2222-4222-8222-222222222222", name: "Green Turf", slug: "green-turf-2", is_active: true, whatsapp_number: "9344689836", created_at: new Date().toISOString() }
+    );
+
+    const res = await handleTurfsPost(
+      postRequest({
+        name: "Green Turf",
+        location: "Test Location",
+        sportType: "Cricket",
+        openingTime: "06:00",
+        closingTime: "22:00",
+        slotIntervalMinutes: 30,
+      }),
+      makeAdminDeps(tables, "admin")
+    );
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.turf.slug).toBe("green-turf-3");
+
+    const slugs = tables.turfs!.map((t) => t.slug);
+    expect(new Set(slugs).size).toBe(slugs.length);
+  });
+});
+
+describe("PATCH /api/admin/turfs/:id - slug preservation", () => {
+  it("never changes the slug when the name is edited", async () => {
+    const tables = buildTables();
+    tables.turfs![0]!.slug = "test-turf";
+
+    const res = await handleTurfPatch(
+      new Request("http://localhost", { method: "PATCH", body: JSON.stringify({ name: "Completely Renamed Turf" }) }),
+      TURF_ID,
+      makeAdminDeps(tables, "admin")
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.turf.name).toBe("Completely Renamed Turf");
+    expect(body.turf.slug).toBe("test-turf"); // unchanged, so an already-shared /book/test-turf link keeps working
+  });
+
+  it("generates a slug defensively if an existing turf somehow has none", async () => {
+    const tables = buildTables();
+    tables.turfs![0]!.slug = null;
+
+    const res = await handleTurfPatch(
+      new Request("http://localhost", { method: "PATCH", body: JSON.stringify({ location: "Updated Location" }) }),
+      TURF_ID,
+      makeAdminDeps(tables, "admin")
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.turf.slug).toBe("test-turf");
+  });
+});

@@ -9,7 +9,7 @@ interface BookNowBarProps {
 }
 
 /**
- * Navigates to the existing Book Slot page (/book/[turfId]) for the active
+ * Navigates to the existing Book Slot page (/book/[slug]) for the active
  * turf -- the turf id is baked into `href` by the caller, so the correct
  * turf is never lost between Home and the booking page.
  *
